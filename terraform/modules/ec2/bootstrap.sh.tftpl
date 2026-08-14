@@ -1,0 +1,177 @@
+#!/bin/bash
+# ShopSphere Stage 1 bootstrap script
+# This script is rendered by Terraform templatefile() and executed as EC2 user_data.
+set -euo pipefail
+
+exec > >(tee /var/log/user-data.log) 2>&1
+
+echo "=== ShopSphere Stage 1 Bootstrap ==="
+echo "Starting at $(date)"
+
+# -----------------------------------------------------------------------------
+# 1. Update OS
+# -----------------------------------------------------------------------------
+dnf update -y
+
+# -----------------------------------------------------------------------------
+# 2. Install required packages
+# -----------------------------------------------------------------------------
+dnf install -y git nginx java-17-amazon-corretto-devel maven redis
+
+# -----------------------------------------------------------------------------
+# 3. Install MongoDB 7.0 (RHEL 9 / Amazon Linux 2023 compatible repo)
+# -----------------------------------------------------------------------------
+cat > /etc/yum.repos.d/mongodb-org-7.0.repo <<'REPO_EOF'
+[mongodb-org-7.0]
+name=MongoDB Repository
+baseurl=https://repo.mongodb.org/yum/redhat/9/mongodb-org/7.0/x86_64/
+gpgcheck=1
+enabled=1
+gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
+REPO_EOF
+
+dnf install -y mongodb-org
+
+# -----------------------------------------------------------------------------
+# 4. Start and enable database and supporting services
+# -----------------------------------------------------------------------------
+systemctl enable --now mongod
+systemctl enable --now redis
+
+# Wait for mongod to be ready (first start can take a few seconds)
+for i in $(seq 1 30); do
+  if mongosh --quiet --eval "db.runCommand({ ping: 1 }).ok" admin | grep -q "^1$"; then
+    echo "mongod is ready"
+    break
+  fi
+  echo "Waiting for mongod..."
+  sleep 2
+done
+
+# -----------------------------------------------------------------------------
+# 5. Create MongoDB admin user (while auth is disabled)
+# -----------------------------------------------------------------------------
+mongosh admin --eval "
+  db.createUser({
+    user: '${db_username}',
+    pwd: '${db_password}',
+    roles: [
+      { role: 'userAdminAnyDatabase', db: 'admin' },
+      { role: 'readWriteAnyDatabase', db: 'admin' }
+    ]
+  })
+" || echo "MongoDB user may already exist, continuing"
+
+# -----------------------------------------------------------------------------
+# 6. Enable MongoDB authentication and restart
+# -----------------------------------------------------------------------------
+if ! grep -q "^security:" /etc/mongod.conf; then
+  cat >> /etc/mongod.conf <<'CONF_EOF'
+
+security:
+  authorization: enabled
+CONF_EOF
+fi
+
+systemctl restart mongod
+
+# -----------------------------------------------------------------------------
+# 7. Clone the ShopSphere application repository
+# -----------------------------------------------------------------------------
+mkdir -p /opt/shopsphere
+cd /opt/shopsphere
+if [ ! -d app ]; then
+  git clone -b "${app_branch}" "${app_repo_url}" app
+else
+  echo "Repo already cloned, pulling latest"
+  cd app && git pull && cd ..
+fi
+
+# -----------------------------------------------------------------------------
+# 8. Build the api-gateway module
+# -----------------------------------------------------------------------------
+cd /opt/shopsphere/app/api-gateway
+mvn clean package -DskipTests -q
+
+# -----------------------------------------------------------------------------
+# 9. Create a stable symlink to the built jar
+# -----------------------------------------------------------------------------
+JAR_FILE=$(find /opt/shopsphere/app/api-gateway/target -maxdepth 1 -name "*.jar" \
+  ! -name "*sources*" ! -name "*javadoc*" ! -name "*original*" | head -n 1)
+
+if [ -z "$JAR_FILE" ]; then
+  echo "ERROR: Could not find built jar in api-gateway/target"
+  exit 1
+fi
+
+ln -sf "$JAR_FILE" /opt/shopsphere/app/api-gateway/target/shopsphere.jar
+echo "Linked jar: $JAR_FILE -> shopsphere.jar"
+
+# -----------------------------------------------------------------------------
+# 10. Create dedicated system user and set ownership
+# -----------------------------------------------------------------------------
+id -u shopsphere &>/dev/null || useradd -r -s /bin/false shopsphere
+chown -R shopsphere:shopsphere /opt/shopsphere/app
+
+# -----------------------------------------------------------------------------
+# 11. Write environment file and systemd service for the API Gateway
+# -----------------------------------------------------------------------------
+cat > /opt/shopsphere/app.env <<'ENV_EOF'
+SPRING_DATA_MONGODB_URI=mongodb://${db_username}:${db_password}@localhost:27017/admin?authSource=admin
+JWT_SECRET=${jwt_secret}
+SPRING_REDIS_HOST=localhost
+ENV_EOF
+
+chmod 600 /opt/shopsphere/app.env
+chown shopsphere:shopsphere /opt/shopsphere/app.env
+
+cat > /etc/systemd/system/shopsphere.service <<SERVICE_EOF
+[Unit]
+Description=ShopSphere API Gateway
+After=network.target mongod.service redis.service
+
+[Service]
+Type=simple
+User=shopsphere
+Group=shopsphere
+WorkingDirectory=/opt/shopsphere/app/api-gateway
+EnvironmentFile=/opt/shopsphere/app.env
+ExecStart=/usr/bin/java -jar /opt/shopsphere/app/api-gateway/target/shopsphere.jar
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+SERVICE_EOF
+
+systemctl daemon-reload
+systemctl enable --now shopsphere
+
+# -----------------------------------------------------------------------------
+# 12. Configure Nginx as reverse proxy
+# -----------------------------------------------------------------------------
+cat > /etc/nginx/conf.d/shopsphere.conf <<NGINX_EOF
+server {
+    listen ${reverse_proxy_port};
+    server_name _;
+
+    location / {
+        proxy_pass http://localhost:${app_port};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $${http_upgrade};
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $${host};
+        proxy_set_header X-Real-IP $${remote_addr};
+        proxy_set_header X-Forwarded-For $${proxy_add_x_forwarded_for};
+        proxy_set_header X-Forwarded-Proto $${scheme};
+        proxy_cache_bypass $${http_upgrade};
+    }
+}
+NGINX_EOF
+
+rm -f /etc/nginx/conf.d/default.conf
+systemctl enable --now nginx
+
+echo "=== Bootstrap complete at $(date) ==="

@@ -1,0 +1,47 @@
+# =============================================================================
+# ShopSphere Stage 1 — Example terraform.tfvars
+# =============================================================================
+# Copy this file to `terraform.tfvars` and fill in your values.
+# terraform.tfvars is gitignored; never commit real secrets.
+# -----------------------------------------------------------------------------
+
+# AWS region and AZ
+aws_region       = "us-east-1"
+availability_zone = "us-east-1a"
+
+# Networking
+vpc_cidr    = "10.0.0.0/16"
+subnet_cidr = "10.0.1.0/24"
+
+# EC2 instance
+instance_type     = "t3.small"
+root_volume_size  = 20
+root_volume_type  = "gp3"
+
+# SSH admin access — set to YOUR public IP /32, e.g. ["203.0.113.42/32"]
+# Get your IP with: curl -s https://checkip.amazonaws.com
+admin_cidr = ["YOUR_PUBLIC_IP/32"]
+
+# Optional EC2 key pair name (leave null/empty to rely on SSM Session Manager only)
+key_name = null
+
+# Application repository (defaults shown)
+app_repo_url = "https://github.com/kbhujbal/ShopSphere---E-commerce-Microservice-Platform.git"
+app_branch   = "main"
+
+# -----------------------------------------------------------------------------
+# Secrets — NEVER commit real values.
+# In production, source these from AWS Secrets Manager or HashiCorp Vault.
+# -----------------------------------------------------------------------------
+
+# MongoDB admin user
+db_username = "shopsphere_admin"
+
+# MongoDB admin password — pick a strong random value (e.g., `openssl rand -base64 24`)
+db_password = "CHANGE_ME_to_a_strong_random_password"
+
+# JWT signing secret — pick a strong random value (e.g., `openssl rand -base64 48`)
+jwt_secret = "CHANGE_ME_to_a_strong_random_secret"
+
+# Application port (api-gateway listens on 8080 by default)
+app_port = 8080
