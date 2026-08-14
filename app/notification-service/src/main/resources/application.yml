@@ -1,0 +1,33 @@
+server:
+  port: 8087
+
+spring:
+  application:
+    name: notification-service
+  data:
+    mongodb:
+      host: ${MONGODB_HOST:localhost}
+      port: 27017
+      database: shopsphere_notifications
+      username: root
+      password: root
+      authentication-database: admin
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: 6379
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+logging:
+  level:
+    com.shopsphere: DEBUG
+    org.springframework: INFO

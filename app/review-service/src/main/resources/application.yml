@@ -1,0 +1,23 @@
+server:
+  port: 8088
+
+spring:
+  application:
+    name: review-service
+  data:
+    mongodb:
+      host: ${MONGODB_HOST:localhost}
+      port: 27017
+      database: shopsphere_reviews
+      username: root
+      password: root
+      authentication-database: admin
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: 6379
+
+logging:
+  level:
+    com.shopsphere.review: DEBUG
+    org.springframework.data.mongodb: INFO
+    org.springframework.data.redis: INFO

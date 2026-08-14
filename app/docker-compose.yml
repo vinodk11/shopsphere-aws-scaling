@@ -1,0 +1,187 @@
+version: '3.8'
+
+services:
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - JWT_SECRET=${JWT_SECRET:-mySecretKeyForJWTTokenGenerationThatIsLongEnoughForHS256Algorithm2024}
+      - USER_SERVICE_URL=http://user-service:8083
+      - PRODUCT_SERVICE_URL=http://product-service:8081
+      - ORDER_SERVICE_URL=http://order-service:8082
+      - CART_SERVICE_URL=http://cart-service:8084
+      - PAYMENT_SERVICE_URL=http://payment-service:8085
+      - SHIPPING_SERVICE_URL=http://shipping-service:8086
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8087
+      - REVIEW_SERVICE_URL=http://review-service:8088
+    depends_on:
+      - user-service
+      - product-service
+    networks:
+      - shopsphere-network
+
+  product-service:
+    build: ./product-service
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - MONGODB_HOST=mongodb
+      - REDIS_HOST=redis
+      - ELASTICSEARCH_URI=http://elasticsearch:9200
+    depends_on:
+      - mongodb
+      - redis
+      - elasticsearch
+    networks:
+      - shopsphere-network
+
+  order-service:
+    build: ./order-service
+    ports:
+      - "8082:8082"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - MONGODB_HOST=mongodb
+      - REDIS_HOST=redis
+      - PRODUCT_SERVICE_URL=http://product-service:8081
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8087
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - shopsphere-network
+
+  user-service:
+    build: ./user-service
+    ports:
+      - "8083:8083"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - MONGODB_HOST=mongodb
+      - REDIS_HOST=redis
+      - JWT_SECRET=${JWT_SECRET:-mySecretKeyForJWTTokenGenerationThatIsLongEnoughForHS256Algorithm2024}
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - shopsphere-network
+
+  cart-service:
+    build: ./cart-service
+    ports:
+      - "8084:8084"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - MONGODB_HOST=mongodb
+      - REDIS_HOST=redis
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - shopsphere-network
+
+  payment-service:
+    build: ./payment-service
+    ports:
+      - "8085:8085"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - MONGODB_HOST=mongodb
+      - REDIS_HOST=redis
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - shopsphere-network
+
+  shipping-service:
+    build: ./shipping-service
+    ports:
+      - "8086:8086"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - MONGODB_HOST=mongodb
+      - REDIS_HOST=redis
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - shopsphere-network
+
+  notification-service:
+    build: ./notification-service
+    ports:
+      - "8087:8087"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - MONGODB_HOST=mongodb
+      - REDIS_HOST=redis
+      - MAIL_USERNAME=${MAIL_USERNAME}
+      - MAIL_PASSWORD=${MAIL_PASSWORD}
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - shopsphere-network
+
+  review-service:
+    build: ./review-service
+    ports:
+      - "8088:8088"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - MONGODB_HOST=mongodb
+      - REDIS_HOST=redis
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - shopsphere-network
+
+  mongodb:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=root
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - shopsphere-network
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.1
+    ports:
+      - "9200:9200"
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - ELASTIC_PASSWORD=changeme
+      - xpack.security.enabled=false
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - shopsphere-network
+
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - shopsphere-network
+
+networks:
+  shopsphere-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+  elasticsearch_data:
+  redis_data:

@@ -1,0 +1,29 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: product-service
+  data:
+    mongodb:
+      host: ${MONGODB_HOST:localhost}
+      port: 27017
+      database: shopsphere_products
+      username: root
+      password: root
+      authentication-database: admin
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: 6379
+    elasticsearch:
+      uris: ${ELASTICSEARCH_URI:http://localhost:9200}
+      username: elastic
+      password: changeme
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
