@@ -1,0 +1,1 @@
+# shopsphere-aws-scaling
