@@ -242,7 +242,7 @@ app.get('/health', async (req, res) => {
       latencyMs = Date.now() - start;
     }
   } catch (err) {
-    dbStatus = `error: ${err.message}`;
+    dbStatus = `error: $${err.message}`;
   }
 
   const isHealthy = dbStatus === 'connected';
@@ -358,9 +358,9 @@ app.post('/api/orders', async (req, res) => {
 
     for (const item of items) {
       const prodRes = await client.query('SELECT id, name, price, stock_quantity FROM products WHERE id = $1 FOR UPDATE', [item.productId]);
-      if (prodRes.rows.length === 0) throw new Error(`Product ID ${item.productId} not found`);
+      if (prodRes.rows.length === 0) throw new Error(`Product ID $${item.productId} not found`);
       const product = prodRes.rows[0];
-      if (product.stock_quantity < item.quantity) throw new Error(`Insufficient stock for ${product.name}`);
+      if (product.stock_quantity < item.quantity) throw new Error(`Insufficient stock for $${product.name}`);
 
       const itemTotal = parseFloat(product.price) * item.quantity;
       totalAmount += itemTotal;
@@ -404,7 +404,7 @@ app.get('*', (req, res) => {
 });
 
 app.listen(PORT, async () => {
-  console.log(`[ShopSphere] Server running on port ${PORT}`);
+  console.log(`[ShopSphere] Server running on port $${PORT}`);
   await initializeDatabase();
 });
 SERVER_JS
@@ -520,18 +520,18 @@ SERVER_JS
           document.getElementById('productGrid').innerHTML = products.map(p => `
             <div class="product-card">
               <div class="img-wrapper">
-                <img src="${p.image_url}" alt="${p.name}" loading="lazy">
-                <span class="category-tag">${p.category_name || 'General'}</span>
+                <img src="$${p.image_url}" alt="$${p.name}" loading="lazy">
+                <span class="category-tag">$${p.category_name || 'General'}</span>
               </div>
               <div class="card-body">
-                <h4 class="product-title">${p.name}</h4>
-                <p class="product-desc">${p.description}</p>
+                <h4 class="product-title">$${p.name}</h4>
+                <p class="product-desc">$${p.description}</p>
                 <div class="card-footer">
                   <div class="price-box">
-                    <span class="price-val">$${parseFloat(p.price).toFixed(2)}</span>
-                    <span class="stock-badge">In Stock: ${p.stock_quantity}</span>
+                    <span class="price-val">$$${parseFloat(p.price).toFixed(2)}</span>
+                    <span class="stock-badge">In Stock: $${p.stock_quantity}</span>
                   </div>
-                  <button class="btn btn-sm btn-primary" onclick="addToCart(${p.id})">Add to Cart</button>
+                  <button class="btn btn-sm btn-primary" onclick="addToCart($${p.id})">Add to Cart</button>
                 </div>
               </div>
             </div>
@@ -581,8 +581,8 @@ SERVER_JS
         checkoutForm.style.display = 'block';
         cartItemsDiv.innerHTML = cart.map((item, idx) => `
           <div class="cart-item-row">
-            <div><strong>${item.name}</strong><div class="item-calc">$${item.price.toFixed(2)} &times; ${item.quantity}</div></div>
-            <div class="item-actions"><span class="item-subtotal">$${(item.price * item.quantity).toFixed(2)}</span><button class="remove-btn" onclick="removeFromCart(${idx})">&times;</button></div>
+            <div><strong>$${item.name}</strong><div class="item-calc">$$${item.price.toFixed(2)} &times; $${item.quantity}</div></div>
+            <div class="item-actions"><span class="item-subtotal">$$${(item.price * item.quantity).toFixed(2)}</span><button class="remove-btn" onclick="removeFromCart($${idx})">&times;</button></div>
           </div>
         `).join('');
       }
@@ -626,7 +626,7 @@ SERVER_JS
         const ordDiv = document.getElementById('ordersList');
         if (oData.count === 0) { ordDiv.innerHTML = '<p>No orders placed yet.</p>'; } else {
           ordDiv.innerHTML = oData.data.map(o => `
-            <div class="order-chip"><strong>#${o.id} - ${o.customer_name}</strong><span>$${parseFloat(o.total_amount).toFixed(2)} &bull; ${new Date(o.created_at).toLocaleTimeString()}</span></div>
+            <div class="order-chip"><strong>#$${o.id} - $${o.customer_name}</strong><span>$$${parseFloat(o.total_amount).toFixed(2)} &bull; $${new Date(o.created_at).toLocaleTimeString()}</span></div>
           `).join('');
         }
       } catch (e) {}
