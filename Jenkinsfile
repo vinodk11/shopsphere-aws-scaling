@@ -35,7 +35,7 @@ pipeline {
         stage('Checkout SCM') {
             steps {
                 echo "🚀 Checking out ShopSphere repository for ${params.STAGE}..."
-                checkout scm
+                git branch: 'main', url: 'https://github.com/vinodk11/shopsphere-aws-scaling.git'
             }
         }
 
