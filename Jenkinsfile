@@ -22,6 +22,7 @@ pipeline {
     environment {
         TF_IN_AUTOMATION = 'true'
         TF_DIR           = "${params.STAGE}/terraform"
+        TF_IMAGE         = 'hashicorp/terraform:latest'
     }
 
     options {
@@ -40,44 +41,51 @@ pipeline {
         }
 
         stage('Terraform Init & Validate') {
-            agent {
-                docker {
-                    image 'hashicorp/terraform:latest'
-                    reuseNode true
-                    args '-u 0:0 --net=host'
-                }
-            }
             steps {
-                dir("${env.TF_DIR}") {
-                    echo "🔧 Running terraform init & validate for ${params.STAGE}..."
-                    sh '''
-                        terraform version
-                        terraform init -input=false
-                        terraform fmt -check || true
-                        terraform validate
-                    '''
-                }
+                echo "🔧 Running terraform init & validate via Docker container..."
+                sh """
+                    docker run --rm \
+                        -v \$(pwd):/workspace \
+                        -w /workspace/${env.TF_DIR} \
+                        --net=host \
+                        ${env.TF_IMAGE} version
+
+                    docker run --rm \
+                        -v \$(pwd):/workspace \
+                        -w /workspace/${env.TF_DIR} \
+                        --net=host \
+                        ${env.TF_IMAGE} init -input=false
+
+                    docker run --rm \
+                        -v \$(pwd):/workspace \
+                        -w /workspace/${env.TF_DIR} \
+                        --net=host \
+                        ${env.TF_IMAGE} validate
+                """
             }
         }
 
         stage('Terraform Plan') {
-            agent {
-                docker {
-                    image 'hashicorp/terraform:latest'
-                    reuseNode true
-                    args '-u 0:0 --net=host'
-                }
-            }
             steps {
-                dir("${env.TF_DIR}") {
-                    script {
-                        if (params.ACTION == 'destroy') {
-                            echo "⚠️ Generating DESTROY plan for ${params.STAGE}..."
-                            sh 'terraform plan -destroy -out=tfplan -input=false'
-                        } else {
-                            echo "📋 Generating execution plan for ${params.STAGE}..."
-                            sh 'terraform plan -out=tfplan -input=false'
-                        }
+                script {
+                    if (params.ACTION == 'destroy') {
+                        echo "⚠️ Generating DESTROY plan for ${params.STAGE}..."
+                        sh """
+                            docker run --rm \
+                                -v \$(pwd):/workspace \
+                                -w /workspace/${env.TF_DIR} \
+                                --net=host \
+                                ${env.TF_IMAGE} plan -destroy -out=tfplan -input=false
+                        """
+                    } else {
+                        echo "📋 Generating execution plan for ${params.STAGE}..."
+                        sh """
+                            docker run --rm \
+                                -v \$(pwd):/workspace \
+                                -w /workspace/${env.TF_DIR} \
+                                --net=host \
+                                ${env.TF_IMAGE} plan -out=tfplan -input=false
+                        """
                     }
                 }
             }
@@ -105,23 +113,26 @@ pipeline {
             when {
                 expression { return params.ACTION == 'apply' || params.ACTION == 'destroy' }
             }
-            agent {
-                docker {
-                    image 'hashicorp/terraform:latest'
-                    reuseNode true
-                    args '-u 0:0 --net=host'
-                }
-            }
             steps {
-                dir("${env.TF_DIR}") {
-                    script {
-                        if (params.ACTION == 'apply') {
-                            echo "🚀 Applying ${params.STAGE} infrastructure..."
-                            sh 'terraform apply -input=false tfplan'
-                        } else if (params.ACTION == 'destroy') {
-                            echo "💥 Destroying ${params.STAGE} infrastructure..."
-                            sh 'terraform apply -input=false tfplan'
-                        }
+                script {
+                    if (params.ACTION == 'apply') {
+                        echo "🚀 Applying ${params.STAGE} infrastructure via Docker..."
+                        sh """
+                            docker run --rm \
+                                -v \$(pwd):/workspace \
+                                -w /workspace/${env.TF_DIR} \
+                                --net=host \
+                                ${env.TF_IMAGE} apply -input=false tfplan
+                        """
+                    } else if (params.ACTION == 'destroy') {
+                        echo "💥 Destroying ${params.STAGE} infrastructure via Docker..."
+                        sh """
+                            docker run --rm \
+                                -v \$(pwd):/workspace \
+                                -w /workspace/${env.TF_DIR} \
+                                --net=host \
+                                ${env.TF_IMAGE} apply -input=false tfplan
+                        """
                     }
                 }
             }
