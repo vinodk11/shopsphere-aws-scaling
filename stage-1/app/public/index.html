@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShopSphere - Modern E-Commerce Monolith</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Stage Indicator Banner -->
+  <div class="stage-banner">
+    <div class="container banner-content">
+      <span class="badge">AWS Stage 1</span>
+      <span class="stage-desc">Single EC2 Instance (Amazon Linux 2023) + Colocated PostgreSQL Database + Nginx Reverse Proxy</span>
+      <div id="systemHealthBadge" class="health-badge"><span class="pulse"></span> Checking System...</div>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header class="navbar">
+    <div class="container nav-container">
+      <div class="brand">
+        <div class="logo-icon">🪐</div>
+        <div>
+          <h1>ShopSphere</h1>
+          <span class="tagline">Cloud Evolution Architecture</span>
+        </div>
+      </div>
+      <div class="nav-actions">
+        <button id="systemInfoBtn" class="btn btn-secondary">Architecture Info</button>
+        <button id="cartBtn" class="btn btn-primary">
+          <span>🛒 Cart</span>
+          <span id="cartCount" class="cart-count">0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container">
+      <h2>Next-Gen Hardware & Peripherals</h2>
+      <p>Demonstrating cloud-native application evolution starting with a resilient single-server baseline.</p>
+    </div>
+  </section>
+
+  <!-- Main Content -->
+  <main class="container main-content">
+    <div class="section-header">
+      <h3>Featured Products</h3>
+      <span id="productCounter" class="counter-text">Loading catalog...</span>
+    </div>
+
+    <!-- Product Grid -->
+    <div id="productGrid" class="product-grid">
+      <!-- Dynamic products loaded here -->
+    </div>
+  </main>
+
+  <!-- System Info Modal -->
+  <div id="infoModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Architecture Details (Stage 1)</h3>
+        <button class="close-btn" id="closeInfoModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="arch-box">
+          <code>Internet &rarr; Nginx (:80) &rarr; Node.js Express (:8080) &rarr; PostgreSQL (:5432) [Localhost]</code>
+        </div>
+        <div class="metrics-grid" id="systemMetrics">
+          <div class="metric-card">
+            <span class="metric-label">Status</span>
+            <span class="metric-val" id="metricStatus">-</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Database</span>
+            <span class="metric-val" id="metricDb">-</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Server Uptime</span>
+            <span class="metric-val" id="metricUptime">-</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Host Memory Free</span>
+            <span class="metric-val" id="metricMem">-</span>
+          </div>
+        </div>
+        <h4 style="margin-top: 1.5rem; margin-bottom: 0.5rem;">Recent Orders in DB</h4>
+        <div id="ordersList" class="orders-list">Loading orders...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cart / Checkout Modal -->
+  <div id="cartModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Your Shopping Cart</h3>
+        <button class="close-btn" id="closeCartModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="cartItems" class="cart-items">
+          <p class="empty-cart-msg">Your cart is empty.</p>
+        </div>
+        <div class="cart-summary">
+          <div class="total-row">
+            <span>Total:</span>
+            <span id="cartTotal" class="total-amount">$0.00</span>
+          </div>
+        </div>
+
+        <form id="checkoutForm" class="checkout-form" style="display: none;">
+          <h4>Checkout Details</h4>
+          <div class="form-group">
+            <label>Full Name</label>
+            <input type="text" id="custName" required placeholder="Alex Developer" value="Alex Developer">
+          </div>
+          <div class="form-group">
+            <label>Email Address</label>
+            <input type="email" id="custEmail" required placeholder="alex@example.com" value="alex@example.com">
+          </div>
+          <div class="form-group">
+            <label>Shipping Address</label>
+            <textarea id="custAddress" required rows="2" placeholder="100 Cloud Way, Seattle, WA">100 Cloud Way, Suite 404, Seattle, WA 98101</textarea>
+          </div>
+          <button type="submit" id="submitOrderBtn" class="btn btn-primary btn-block">Confirm & Place Order</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container footer-content">
+      <p>&copy; 2026 ShopSphere Project &bull; Built for AWS Architecture Learning</p>
+      <p class="footer-sub">Stage 1: Single EC2 + Local PostgreSQL &bull; Managed by Terraform</p>
+    </div>
+  </footer>
+
+  <script>
+    let cart = [];
+    let products = [];
+
+    // Fetch Products
+    async function loadProducts() {
+      try {
+        const res = await fetch('/api/products');
+        const data = await res.json();
+        if (data.success) {
+          products = data.data;
+          renderProducts(products);
+          document.getElementById('productCounter').innerText = `${products.length} Products Available`;
+        }
+      } catch (err) {
+        document.getElementById('productGrid').innerHTML = `<p class="error-msg">Error loading catalog: ${err.message}</p>`;
+      }
+    }
+
+    function renderProducts(items) {
+      const grid = document.getElementById('productGrid');
+      grid.innerHTML = items.map(p => `
+        <div class="product-card">
+          <div class="img-wrapper">
+            <img src="${p.image_url}" alt="${p.name}" loading="lazy">
+            <span class="category-tag">${p.category_name || 'General'}</span>
+          </div>
+          <div class="card-body">
+            <h4 class="product-title">${p.name}</h4>
+            <p class="product-desc">${p.description}</p>
+            <div class="card-footer">
+              <div class="price-box">
+                <span class="price-val">$${parseFloat(p.price).toFixed(2)}</span>
+                <span class="stock-badge">In Stock: ${p.stock_quantity}</span>
+              </div>
+              <button class="btn btn-sm btn-primary" onclick="addToCart(${p.id})">Add to Cart</button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Health Check
+    async function checkHealth() {
+      try {
+        const res = await fetch('/health');
+        const data = await res.json();
+        const badge = document.getElementById('systemHealthBadge');
+        if (data.status === 'UP') {
+          badge.className = 'health-badge health-up';
+          badge.innerHTML = `<span class="pulse green"></span> System Healthy (DB: ${data.database.latencyMs}ms)`;
+        } else {
+          badge.className = 'health-badge health-down';
+          badge.innerHTML = `<span class="pulse red"></span> DB Issue`;
+        }
+      } catch (e) {
+        const badge = document.getElementById('systemHealthBadge');
+        badge.className = 'health-badge health-down';
+        badge.innerHTML = `<span class="pulse red"></span> Offline`;
+      }
+    }
+
+    // Cart Management
+    function addToCart(productId) {
+      const prod = products.find(p => p.id === productId);
+      if (!prod) return;
+      const existing = cart.find(item => item.productId === productId);
+      if (existing) {
+        existing.quantity += 1;
+      } else {
+        cart.push({ productId: prod.id, name: prod.name, price: parseFloat(prod.price), quantity: 1 });
+      }
+      updateCartUI();
+    }
+
+    function updateCartUI() {
+      const count = cart.reduce((sum, item) => sum + item.quantity, 0);
+      document.getElementById('cartCount').innerText = count;
+
+      const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      document.getElementById('cartTotal').innerText = `$${total.toFixed(2)}`;
+
+      const cartItemsDiv = document.getElementById('cartItems');
+      const checkoutForm = document.getElementById('checkoutForm');
+
+      if (cart.length === 0) {
+        cartItemsDiv.innerHTML = '<p class="empty-cart-msg">Your cart is empty.</p>';
+        checkoutForm.style.display = 'none';
+      } else {
+        checkoutForm.style.display = 'block';
+        cartItemsDiv.innerHTML = cart.map((item, idx) => `
+          <div class="cart-item-row">
+            <div>
+              <strong>${item.name}</strong>
+              <div class="item-calc">$${item.price.toFixed(2)} &times; ${item.quantity}</div>
+            </div>
+            <div class="item-actions">
+              <span class="item-subtotal">$${(item.price * item.quantity).toFixed(2)}</span>
+              <button class="remove-btn" onclick="removeFromCart(${idx})">&times;</button>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+
+    function removeFromCart(idx) {
+      cart.splice(idx, 1);
+      updateCartUI();
+    }
+
+    // Checkout Form
+    document.getElementById('checkoutForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('submitOrderBtn');
+      btn.disabled = true;
+      btn.innerText = 'Processing Order...';
+
+      const payload = {
+        customerName: document.getElementById('custName').value,
+        customerEmail: document.getElementById('custEmail').value,
+        shippingAddress: document.getElementById('custAddress').value,
+        items: cart.map(i => ({ productId: i.productId, quantity: i.quantity }))
+      };
+
+      try {
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          alert(`🎉 Order #${data.orderId} placed successfully! Total: $${data.totalAmount}`);
+          cart = [];
+          updateCartUI();
+          document.getElementById('cartModal').style.display = 'none';
+          loadProducts(); // refresh stock
+        } else {
+          alert(`Error: ${data.error}`);
+        }
+      } catch (err) {
+        alert(`Failed to place order: ${err.message}`);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Confirm & Place Order';
+      }
+    });
+
+    // Modals
+    const cartModal = document.getElementById('cartModal');
+    const infoModal = document.getElementById('infoModal');
+
+    document.getElementById('cartBtn').onclick = () => { updateCartUI(); cartModal.style.display = 'block'; };
+    document.getElementById('closeCartModal').onclick = () => { cartModal.style.display = 'none'; };
+
+    document.getElementById('systemInfoBtn').onclick = async () => {
+      infoModal.style.display = 'block';
+      try {
+        const healthRes = await fetch('/health');
+        const hData = await healthRes.json();
+        document.getElementById('metricStatus').innerText = hData.status;
+        document.getElementById('metricDb').innerText = `${hData.database.status} (${hData.database.latencyMs || 0}ms)`;
+        document.getElementById('metricUptime').innerText = `${hData.uptimeSeconds}s`;
+        document.getElementById('metricMem').innerText = `${hData.system.freeMemMB}MB / ${hData.system.totalMemMB}MB`;
+
+        const ordRes = await fetch('/api/orders');
+        const oData = await ordRes.json();
+        const ordDiv = document.getElementById('ordersList');
+        if (oData.count === 0) {
+          ordDiv.innerHTML = '<p>No orders placed yet.</p>';
+        } else {
+          ordDiv.innerHTML = oData.data.map(o => `
+            <div class="order-chip">
+              <strong>#${o.id} - ${o.customer_name}</strong>
+              <span>$${parseFloat(o.total_amount).toFixed(2)} &bull; ${new Date(o.created_at).toLocaleTimeString()}</span>
+            </div>
+          `).join('');
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    document.getElementById('closeInfoModal').onclick = () => { infoModal.style.display = 'none'; };
+
+    window.onclick = (e) => {
+      if (e.target === cartModal) cartModal.style.display = 'none';
+      if (e.target === infoModal) infoModal.style.display = 'none';
+    };
+
+    // Initial load
+    loadProducts();
+    checkHealth();
+    setInterval(checkHealth, 15000);
+  </script>
+</body>
+</html>

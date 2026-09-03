@@ -1,0 +1,41 @@
+# ==============================================================================
+# ShopSphere Stage 2 - Example Variable Customizations
+# Copy this file to `terraform.tfvars` and customize before deploying
+# ==============================================================================
+
+# AWS Region & Project Identification
+aws_region   = "us-east-1"
+project_name = "shopsphere"
+environment  = "stage2"
+
+# Multi-Tier VPC Network Configuration
+vpc_cidr             = "10.0.0.0/16"
+public_subnet_cidr   = "10.0.1.0/24"
+private_subnet_cidrs = ["10.0.10.0/24", "10.0.11.0/24"]
+
+# Leave availability_zones as null to auto-select the first 2 AZs in the region
+# availability_zones = ["us-east-1a", "us-east-1b"]
+
+# Administrator Security (Replace 0.0.0.0/0 with your workstation IP, e.g. ["203.0.113.50/32"])
+admin_cidr = ["0.0.0.0/0"]
+
+# EC2 Compute Tier Configuration
+instance_type    = "t3.micro"
+root_volume_size = 20
+ssh_key_name     = null # Set to your AWS KeyPair name if using SSH
+
+# Application Configuration & Repository URL
+app_port     = 8080
+app_repo_url = "https://github.com/kbhujbal/ShopSphere---E-commerce-Microservice-Platform.git"
+
+# Amazon RDS PostgreSQL Database Tier Configuration
+db_name                    = "shopspheredb"
+db_user                    = "shopsphere_user"
+db_password                = "ShopSphere2026SecurePass!" # Specify a strong password
+db_engine_version          = "15.7"
+db_instance_class          = "db.t3.micro"
+db_allocated_storage       = 20
+db_max_allocated_storage   = 100
+db_multi_az                = false # Set to true for production Multi-AZ failover
+db_skip_final_snapshot     = true  # Set to false if you want a final snapshot on destroy
+db_backup_retention_period = 7

@@ -1,0 +1,185 @@
+pipeline {
+    agent any
+
+    parameters {
+        choice(
+            name: 'ACTION',
+            choices: ['plan', 'apply', 'destroy'],
+            description: 'Terraform action to perform on Stage-1 (Single EC2 Monolith + Colocated PostgreSQL)'
+        )
+        booleanParam(
+            name: 'AUTO_APPROVE',
+            defaultValue: false,
+            description: 'Skip manual confirmation before apply or destroy'
+        )
+    }
+
+    environment {
+        TF_IN_AUTOMATION = 'true'
+        TF_DIR           = 'stage-1/terraform'
+    }
+
+    options {
+        timeout(time: 45, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        ansiColor('xterm')
+    }
+
+    stages {
+
+        stage('Checkout SCM') {
+            steps {
+                echo "🚀 Checking out ShopSphere Stage 1..."
+                checkout scm
+            }
+        }
+
+        stage('Terraform Init & Validate') {
+            agent {
+                docker {
+                    image 'hashicorp/terraform:latest'
+                    reuseNode true
+                    args '-u 0:0 --net=host'
+                }
+            }
+            steps {
+                dir("${env.TF_DIR}") {
+                    echo "🔧 Running terraform init & validate for Stage-1..."
+                    sh '''
+                        terraform version
+                        terraform init -input=false
+                        terraform fmt -check || true
+                        terraform validate
+                    '''
+                }
+            }
+        }
+
+        stage('Terraform Plan') {
+            agent {
+                docker {
+                    image 'hashicorp/terraform:latest'
+                    reuseNode true
+                    args '-u 0:0 --net=host'
+                }
+            }
+            steps {
+                dir("${env.TF_DIR}") {
+                    script {
+                        if (params.ACTION == 'destroy') {
+                            echo "⚠️ Generating DESTROY plan for Stage-1..."
+                            sh 'terraform plan -destroy -out=tfplan -input=false'
+                        } else {
+                            echo "📋 Generating execution plan for Stage-1..."
+                            sh 'terraform plan -out=tfplan -input=false'
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Approval Gate') {
+            when {
+                expression { 
+                    return (params.ACTION == 'apply' || params.ACTION == 'destroy') && !params.AUTO_APPROVE 
+                }
+            }
+            steps {
+                script {
+                    def actionText = params.ACTION == 'destroy' ? 'DESTROY' : 'APPLY'
+                    input(
+                        id: 'TerraformApproval',
+                        message: "Review the plan above. Proceed with Terraform ${actionText} on Stage-1?",
+                        ok: "Proceed with ${actionText}"
+                    )
+                }
+            }
+        }
+
+        stage('Terraform Apply / Destroy') {
+            when {
+                expression { return params.ACTION == 'apply' || params.ACTION == 'destroy' }
+            }
+            agent {
+                docker {
+                    image 'hashicorp/terraform:latest'
+                    reuseNode true
+                    args '-u 0:0 --net=host'
+                }
+            }
+            steps {
+                dir("${env.TF_DIR}") {
+                    script {
+                        if (params.ACTION == 'apply') {
+                            echo "🚀 Applying Stage-1 infrastructure..."
+                            sh 'terraform apply -input=false tfplan'
+                        } else if (params.ACTION == 'destroy') {
+                            echo "💥 Destroying Stage-1 infrastructure..."
+                            sh 'terraform apply -input=false tfplan'
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Smoke Test & Health Verification') {
+            when {
+                expression { return params.ACTION == 'apply' }
+            }
+            steps {
+                dir("${env.TF_DIR}") {
+                    echo "🩺 Verifying Stage-1 Storefront Health endpoint..."
+                    sh '''
+                        EC2_IP=$(grep -o '"public_ip": *"[^"]*"' terraform.tfstate | head -n1 | cut -d '"' -f4 || true)
+
+                        if [ -z "$EC2_IP" ]; then
+                            echo "⚠️ Could not parse EC2 public IP from state, skipping health test."
+                            exit 0
+                        fi
+
+                        HEALTH_URL="http://${EC2_IP}/health"
+                        echo "Target Health Check: $HEALTH_URL"
+                        echo "Waiting for EC2 User-Data bootstrap (Node.js + PostgreSQL)..."
+
+                        ATTEMPTS=0
+                        MAX_ATTEMPTS=20
+                        SUCCESS=0
+
+                        until [ $ATTEMPTS -ge $MAX_ATTEMPTS ]; do
+                            RES=$(curl -s "$HEALTH_URL" || true)
+                            if echo "$RES" | grep -q '"status":"UP"'; then
+                                echo "✅ Stage-1 Monolith is UP and healthy!"
+                                echo "$RES"
+                                SUCCESS=1
+                                break
+                            else
+                                echo "⏳ Attempt $((ATTEMPTS+1))/$MAX_ATTEMPTS: Waiting for instance bootstrap (15s)..."
+                                sleep 15
+                                ATTEMPTS=$((ATTEMPTS+1))
+                            fi
+                        done
+
+                        if [ $SUCCESS -ne 1 ]; then
+                            echo "❌ Health check timed out after 5 minutes."
+                            exit 1
+                        fi
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            dir("${env.TF_DIR}") {
+                sh 'rm -f tfplan'
+            }
+        }
+        success {
+            echo "🎉 ShopSphere Stage-1 ${params.ACTION.toUpperCase()} completed successfully!"
+        }
+        failure {
+            echo "❌ ShopSphere Stage-1 Pipeline failed. Check console output."
+        }
+    }
+}

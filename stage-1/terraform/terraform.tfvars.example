@@ -1,0 +1,32 @@
+# ==============================================================================
+# ShopSphere Stage 1 - Example Variable Definitions
+# Copy this file to `terraform.tfvars` and customize before running terraform apply
+# ==============================================================================
+
+# AWS Region & Identification
+aws_region   = "us-east-1"
+project_name = "shopsphere"
+environment  = "stage1"
+
+# Network Configuration
+vpc_cidr           = "10.0.0.0/16"
+public_subnet_cidr = "10.0.1.0/24"
+availability_zone  = "us-east-1a" # Or leave null to auto-select
+
+# Security Configuration
+# IMPORTANT: Replace 0.0.0.0/0 with your actual administrator IP (e.g., ["203.0.113.50/32"])
+admin_cidr = ["0.0.0.0/0"]
+
+# EC2 Compute Configuration
+instance_type    = "t3.micro"
+root_volume_size = 20
+ssh_key_name     = "my-aws-keypair" # Optional: set your existing AWS Key Pair name
+
+# Application & Database Configuration
+app_port     = 8080
+db_name      = "shopspheredb"
+db_user      = "shopsphere_user"
+db_password  = "ShopSphere2026SecurePass!" # Update with a strong secret
+
+# Remote Git Repository for ShopSphere Application
+app_repo_url = "https://github.com/kbhujbal/ShopSphere---E-commerce-Microservice-Platform.git"

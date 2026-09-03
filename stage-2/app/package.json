@@ -1,0 +1,29 @@
+{
+  "name": "shopsphere-app",
+  "version": "2.0.0",
+  "description": "ShopSphere E-Commerce Application - Stage 2 (Decoupled Amazon RDS PostgreSQL)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "morgan": "^1.10.0",
+    "pg": "^8.11.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "ecommerce",
+    "aws",
+    "rds",
+    "postgresql",
+    "cloud-architecture"
+  ],
+  "author": "ShopSphere Team",
+  "license": "MIT"
+}
