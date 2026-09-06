@@ -85,12 +85,16 @@ ENV_EOF
 
 chmod 600 /opt/shopsphere/app/.env
 
-# Create dedicated system user and set permissions
-id -u shopsphere &>/dev/null || useradd -r -s /bin/false shopsphere
-chown -R shopsphere:shopsphere /opt/shopsphere/app
+# Create dedicated system user and home directory
+id -u shopsphere &>/dev/null || useradd -r -m -d /home/shopsphere -s /bin/false shopsphere
+mkdir -p /home/shopsphere
+chown -R shopsphere:shopsphere /home/shopsphere
 
+# Install npm dependencies using clean temporary cache
 cd /opt/shopsphere/app
-sudo -u shopsphere npm install --omit=dev
+export HOME=/root
+npm install --omit=dev --cache /tmp/.npm
+chown -R shopsphere:shopsphere /opt/shopsphere /home/shopsphere
 
 # ------------------------------------------------------------------------------
 # 5. Configure Systemd Service for ShopSphere
