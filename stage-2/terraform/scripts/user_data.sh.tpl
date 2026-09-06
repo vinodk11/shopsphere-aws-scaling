@@ -65,8 +65,8 @@ fi
 
 # Apply initial database schema to Amazon RDS if present
 if [ -f "/opt/shopsphere/app/db/schema.sql" ]; then
-  echo "Applying database schema to Amazon RDS..."
-  PGPASSWORD="${db_password}" psql -h "${db_host}" -p "${db_port}" -U "${db_user}" -d "${db_name}" -f /opt/shopsphere/app/db/schema.sql || true
+  echo "Applying database schema to Amazon RDS with SSL..."
+  PGPASSWORD="${db_password}" PGSSLMODE=require psql -h "${db_host}" -p "${db_port}" -U "${db_user}" -d "${db_name}" -f /opt/shopsphere/app/db/schema.sql || true
 fi
 
 # ------------------------------------------------------------------------------
@@ -81,6 +81,7 @@ DB_PORT=${db_port}
 DB_NAME=${db_name}
 DB_USER=${db_user}
 DB_PASSWORD=${db_password}
+DB_SSL=true
 ENV_EOF
 
 chmod 600 /opt/shopsphere/app/.env

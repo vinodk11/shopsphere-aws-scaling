@@ -24,8 +24,8 @@ const poolConfig = {
   connectionTimeoutMillis: 5000,
 };
 
-// Enable SSL if specified in environment
-if (process.env.DB_SSL === 'true') {
+// Enable SSL if specified in environment or if connecting to Amazon RDS
+if (process.env.DB_SSL === 'true' || (poolConfig.host && poolConfig.host.includes('rds.amazonaws.com'))) {
   poolConfig.ssl = { rejectUnauthorized: false };
 }
 
