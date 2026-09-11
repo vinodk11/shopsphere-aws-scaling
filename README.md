@@ -35,11 +35,32 @@ Stage 9: GitOps + Argo CD + Full Observability (Cloud Native CI/CD & Distributed
 | **Stage 1** | [`stage-1/`](stage-1/README.md) | Single EC2, local PostgreSQL, Nginx reverse proxy | ✅ Completed |
 | **Stage 2** | [`stage-2/`](stage-2/README.md) | EC2 compute, decoupled Amazon RDS PostgreSQL, multi-tier VPC | ✅ Completed |
 | **Stage 3** | [`stage-3/`](stage-3/README.md) | Application Load Balancer, Multi-AZ Auto Scaling Group, Amazon RDS | ✅ Completed |
+| **Stage 4** | [`stage-4/`](stage-4/README.md) | In-Memory Amazon ElastiCache Redis, Cache-Aside, Sub-ms Latency | ✅ Completed |
 
 ---
 
 ## 🚀 CI/CD Automation
 
 This repository includes:
-- A root [`Jenkinsfile`](Jenkinsfile) capable of dynamically planning, applying, or destroying any stage (`stage-1`, `stage-2`, or `stage-3`) using containerized Terraform with approval gates and automated health verification.
-- Dedicated standalone pipelines in each stage directory (`stage-1/Jenkinsfile`, `stage-2/Jenkinsfile`, `stage-3/Jenkinsfile`).
+- A root [`Jenkinsfile`](Jenkinsfile) capable of dynamically planning, applying, or destroying any stage (`stage-1`, `stage-2`, `stage-3`, or `stage-4`) using containerized Terraform with approval gates and automated health verification.
+- Dedicated standalone pipelines in each stage directory (`stage-1/Jenkinsfile`, `stage-2/Jenkinsfile`, `stage-3/Jenkinsfile`, `stage-4/Jenkinsfile`).
+
+### Required Jenkins Plugins
+
+To run the declarative pipelines in Jenkins, install the following plugins (**Manage Jenkins** &rarr; **Plugins** &rarr; **Available plugins**):
+
+| Plugin Name | Plugin ID | Requirement |
+| :--- | :--- | :--- |
+| **Pipeline** | `workflow-aggregator` | Core Declarative Pipeline engine |
+| **Git** | `git` | SCM repository cloning |
+| **AnsiColor** | `ansicolor` | **Critical!** Terminal ANSI color decoding for `ansiColor('xterm')` |
+| **Pipeline: Input Step** | `pipeline-input-step` | Manual approval gates before Terraform apply/destroy |
+| **Docker Pipeline** | `docker-workflow` | Optional container integration |
+
+### Jenkins Server Host Configuration
+
+The pipelines run Terraform inside Docker containers. Ensure the following on your Jenkins server:
+
+1. **Start Docker:** `sudo systemctl enable --now docker`
+2. **Grant Docker Access:** `sudo usermod -aG docker jenkins && sudo systemctl restart jenkins`
+3. **AWS IAM Access:** Attach an IAM Role with EC2, VPC, and RDS permissions to the Jenkins EC2 instance.

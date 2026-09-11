@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShopSphere - Stage 4: Amazon ElastiCache Redis</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Stage Indicator Banner -->
+  <div class="stage-banner">
+    <div class="container banner-content">
+      <span class="badge">AWS Stage 4</span>
+      <span class="stage-desc">Application Load Balancer &bull; Auto Scaling Fleet &bull; In-Memory Amazon ElastiCache (Redis) &bull; Amazon RDS (PostgreSQL)</span>
+      <div id="systemHealthBadge" class="health-badge"><span class="pulse"></span> Checking System...</div>
+    </div>
+  </div>
+
+  <!-- Header / Navbar -->
+  <header class="navbar">
+    <div class="container nav-container">
+      <div class="brand">
+        <div class="logo-icon">🪐</div>
+        <div>
+          <h1>ShopSphere</h1>
+          <span class="tagline">AWS Architecture Evolution &bull; Stage 4 (ElastiCache / Redis)</span>
+        </div>
+      </div>
+      <div class="nav-actions">
+        <button id="systemInfoBtn" class="btn btn-secondary">Architecture Info</button>
+        <button id="cartBtn" class="btn btn-primary">
+          <span>🛒 Cart</span>
+          <span id="cartCount" class="cart-count">0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container">
+      <h2>In-Memory Caching &amp; Sub-Millisecond Speed</h2>
+      <p>Demonstrating Cache-Aside architecture using Amazon ElastiCache Redis to offload relational read pressure from Amazon RDS.</p>
+
+      <!-- Stage 4 Caching Performance Dashboard -->
+      <div class="cache-dashboard">
+        <div class="cache-dashboard-header">
+          <div class="cache-dashboard-title">
+            <span>⚡ In-Memory Cache Performance (ElastiCache Redis)</span>
+          </div>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button id="flushCacheBtn" class="btn btn-redis btn-sm" onclick="flushCache()">
+              <span>🗑️ Flush Redis Cache (Cold Test)</span>
+            </button>
+            <button id="refreshCatalogBtn" class="btn btn-secondary btn-sm" onclick="loadProducts()">
+              <span>🔄 Query Catalog</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="cache-stats-grid">
+          <div class="cache-stat-card">
+            <span class="cache-stat-label">Cache Hit Ratio</span>
+            <span id="hitRatioVal" class="cache-stat-val">0.0%</span>
+          </div>
+          <div class="cache-stat-card">
+            <span class="cache-stat-label">Total Cache Hits / Misses</span>
+            <span class="cache-stat-val">
+              <span id="hitsVal" class="cache-hit-tag">0</span> / <span id="missesVal" class="cache-miss-tag">0</span>
+            </span>
+          </div>
+          <div class="cache-stat-card">
+            <span class="cache-stat-label">Last Query Latency</span>
+            <span id="lastLatencyVal" class="cache-stat-val">- ms</span>
+          </div>
+          <div class="cache-stat-card">
+            <span class="cache-stat-label">Active Serving Host</span>
+            <span id="servingHostVal" class="cache-stat-val" style="font-size: 0.95rem;">Detecting...</span>
+          </div>
+        </div>
+
+        <div class="cache-indicator-bar">
+          <div>
+            <span>Last Request Source: </span>
+            <span id="lastSourceBadge" class="source-badge miss">PENDING</span>
+          </div>
+          <div id="cacheStatusDetail" style="font-size: 0.8rem; color: var(--text-muted);">
+            Redis Status: Initializing...
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Content -->
+  <main class="container main-content">
+    <div class="section-header">
+      <h3>Featured Products</h3>
+      <span id="productCounter" class="counter-text">Loading catalog...</span>
+    </div>
+
+    <!-- Product Grid -->
+    <div id="productGrid" class="product-grid">
+      <!-- Dynamic products loaded here -->
+    </div>
+  </main>
+
+  <!-- System Info Modal -->
+  <div id="infoModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Architecture Details (Stage 4)</h3>
+        <button class="close-btn" id="closeInfoModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="arch-box">
+          <code>Internet &rarr; ALB (:80) &rarr; Target Group &rarr; ASG EC2 Nodes &rarr; Amazon ElastiCache (Redis :6379 Private Subnets) &amp; Amazon RDS (PostgreSQL :5432 Private DB Subnets)</code>
+        </div>
+        <div class="metrics-grid" id="systemMetrics">
+          <div class="metric-card">
+            <span class="metric-label">App Status</span>
+            <span class="metric-val" id="metricStatus">-</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Cache Engine</span>
+            <span class="metric-val" id="metricCache">-</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Database Tier</span>
+            <span class="metric-val" id="metricDb">-</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Serving Node</span>
+            <span class="metric-val" id="metricHost">-</span>
+          </div>
+        </div>
+        <h4 style="margin-top: 1.5rem; margin-bottom: 0.5rem;">Recent Orders &amp; Handling Instances</h4>
+        <div id="ordersList" class="orders-list">Loading orders...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cart / Checkout Modal -->
+  <div id="cartModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Your Shopping Cart</h3>
+        <button class="close-btn" id="closeCartModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="cartItems" class="cart-items">
+          <p class="empty-cart-msg">Your cart is empty.</p>
+        </div>
+        <div class="cart-summary">
+          <div class="total-row">
+            <span>Total:</span>
+            <span id="cartTotal" class="total-amount">$0.00</span>
+          </div>
+        </div>
+
+        <form id="checkoutForm" class="checkout-form" style="display: none;">
+          <h4>Checkout Details</h4>
+          <div class="form-group">
+            <label>Full Name</label>
+            <input type="text" id="custName" required placeholder="Alex Developer" value="Alex Developer">
+          </div>
+          <div class="form-group">
+            <label>Email Address</label>
+            <input type="email" id="custEmail" required placeholder="alex@example.com" value="alex@example.com">
+          </div>
+          <div class="form-group">
+            <label>Shipping Address</label>
+            <textarea id="custAddress" required rows="2" placeholder="100 Cloud Way, Seattle, WA">100 Cloud Way, Suite 404, Seattle, WA 98101</textarea>
+          </div>
+          <button type="submit" id="submitOrderBtn" class="btn btn-primary btn-block">Confirm &amp; Place Order (ACID + Cache Purge)</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container footer-content">
+      <p>&copy; 2026 ShopSphere Project &bull; Built for AWS Architecture Learning</p>
+      <p class="footer-sub">Stage 4: ALB + ASG + Amazon ElastiCache (Redis) + Amazon RDS (PostgreSQL) &bull; Managed by Terraform</p>
+    </div>
+  </footer>
+
+  <script>
+    let cart = [];
+    let products = [];
+
+    // Fetch Products with Cache-Aside latency measurement
+    async function loadProducts() {
+      try {
+        const start = performance.now();
+        const res = await fetch('/api/products');
+        const data = await res.json();
+        const clientDuration = Math.round(performance.now() - start);
+
+        if (data.success) {
+          products = data.data;
+          renderProducts(products);
+          document.getElementById('productCounter').innerText = `${products.length} Products Available`;
+
+          // Update Cache Performance UI
+          const sourceBadge = document.getElementById('lastSourceBadge');
+          const isHit = data.source === 'cache';
+          sourceBadge.className = `source-badge ${isHit ? 'hit' : 'miss'}`;
+          sourceBadge.innerHTML = isHit 
+            ? `⚡ CACHE HIT (ElastiCache Redis: ${data.latencyMs}ms)` 
+            : `🐢 CACHE MISS (RDS PostgreSQL: ${data.latencyMs}ms)`;
+
+          document.getElementById('lastLatencyVal').innerText = `${data.latencyMs}ms (total: ${clientDuration}ms)`;
+          document.getElementById('servingHostVal').innerText = data.servedBy || 'ASG Node';
+
+          updateCacheStats();
+        }
+      } catch (err) {
+        document.getElementById('productGrid').innerHTML = `<p class="error-msg">Error loading catalog: ${err.message}</p>`;
+      }
+    }
+
+    function renderProducts(items) {
+      const grid = document.getElementById('productGrid');
+      grid.innerHTML = items.map(p => `
+        <div class="product-card">
+          <div class="img-wrapper">
+            <img src="${p.image_url}" alt="${p.name}" loading="lazy">
+            <span class="category-tag">${p.category_name || 'General'}</span>
+          </div>
+          <div class="card-body">
+            <h4 class="product-title">${p.name}</h4>
+            <p class="product-desc">${p.description}</p>
+            <div class="card-footer">
+              <div class="price-box">
+                <span class="price-val">$${parseFloat(p.price).toFixed(2)}</span>
+                <span class="stock-badge">In Stock: ${p.stock_quantity}</span>
+              </div>
+              <button class="btn btn-sm btn-primary" onclick="addToCart(${p.id})">Add to Cart</button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Cache Stats & Invalidation
+    async function updateCacheStats() {
+      try {
+        const res = await fetch('/api/cache/stats');
+        const data = await res.json();
+        if (data.success) {
+          document.getElementById('hitRatioVal').innerText = `${data.hitRatioPercent}%`;
+          document.getElementById('hitsVal').innerText = data.hits;
+          document.getElementById('missesVal').innerText = data.misses;
+          document.getElementById('cacheStatusDetail').innerText = `Redis: Connected (${data.cachedKeysCount} key(s) cached, TTL: ${data.ttlSeconds}s)`;
+        }
+      } catch (e) {
+        console.warn('Could not fetch cache stats:', e);
+      }
+    }
+
+    async function flushCache() {
+      const btn = document.getElementById('flushCacheBtn');
+      btn.disabled = true;
+      btn.innerText = 'Flushing Redis...';
+
+      try {
+        const res = await fetch('/api/cache/flush', { method: 'POST' });
+        const data = await res.json();
+        alert(`🗑️ ${data.message}`);
+        await loadProducts(); // Demonstrate cold-cache miss
+      } catch (err) {
+        alert(`Failed to flush cache: ${err.message}`);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = '🗑️ Flush Redis Cache (Cold Test)';
+      }
+    }
+
+    // Health Check
+    async function checkHealth() {
+      try {
+        const res = await fetch('/health');
+        const data = await res.json();
+        const badge = document.getElementById('systemHealthBadge');
+        if (data.status === 'UP') {
+          badge.className = 'health-badge health-up';
+          const rStatus = data.cache.status === 'connected' ? `Redis OK (${data.cache.latencyMs || 0}ms)` : 'Redis Off';
+          badge.innerHTML = `<span class="pulse green"></span> RDS (${data.database.latencyMs}ms) &bull; ${rStatus}`;
+        } else {
+          badge.className = 'health-badge health-down';
+          badge.innerHTML = `<span class="pulse red"></span> Database Degraded`;
+        }
+      } catch (e) {
+        const badge = document.getElementById('systemHealthBadge');
+        badge.className = 'health-badge health-down';
+        badge.innerHTML = `<span class="pulse red"></span> Target Unhealthy`;
+      }
+    }
+
+    // Cart Management
+    function addToCart(productId) {
+      const prod = products.find(p => p.id === productId);
+      if (!prod) return;
+      const existing = cart.find(item => item.productId === productId);
+      if (existing) {
+        existing.quantity += 1;
+      } else {
+        cart.push({ productId: prod.id, name: prod.name, price: parseFloat(prod.price), quantity: 1 });
+      }
+      updateCartUI();
+    }
+
+    function updateCartUI() {
+      const count = cart.reduce((sum, item) => sum + item.quantity, 0);
+      document.getElementById('cartCount').innerText = count;
+
+      const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      document.getElementById('cartTotal').innerText = `$${total.toFixed(2)}`;
+
+      const cartItemsDiv = document.getElementById('cartItems');
+      const checkoutForm = document.getElementById('checkoutForm');
+
+      if (cart.length === 0) {
+        cartItemsDiv.innerHTML = '<p class="empty-cart-msg">Your cart is empty.</p>';
+        checkoutForm.style.display = 'none';
+      } else {
+        checkoutForm.style.display = 'block';
+        cartItemsDiv.innerHTML = cart.map((item, idx) => `
+          <div class="cart-item-row">
+            <div>
+              <strong>${item.name}</strong>
+              <div class="item-calc">$${item.price.toFixed(2)} &times; ${item.quantity}</div>
+            </div>
+            <div class="item-actions">
+              <span class="item-subtotal">$${(item.price * item.quantity).toFixed(2)}</span>
+              <button class="remove-btn" onclick="removeFromCart(${idx})">&times;</button>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+
+    function removeFromCart(idx) {
+      cart.splice(idx, 1);
+      updateCartUI();
+    }
+
+    // Checkout Form (Order creates ACID record & purges Redis cache)
+    document.getElementById('checkoutForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('submitOrderBtn');
+      btn.disabled = true;
+      btn.innerText = 'Processing & Invalidating Cache...';
+
+      const payload = {
+        customerName: document.getElementById('custName').value,
+        customerEmail: document.getElementById('custEmail').value,
+        shippingAddress: document.getElementById('custAddress').value,
+        items: cart.map(i => ({ productId: i.productId, quantity: i.quantity }))
+      };
+
+      try {
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          alert(`🎉 Order #${data.orderId} placed! Stored in RDS & Redis cache invalidated.`);
+          cart = [];
+          updateCartUI();
+          document.getElementById('cartModal').style.display = 'none';
+          loadProducts(); // Fresh fetch will trigger a cache-miss and re-seed Redis
+        } else {
+          alert(`Error: ${data.error}`);
+        }
+      } catch (err) {
+        alert(`Failed to place order: ${err.message}`);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Confirm & Place Order (ACID + Cache Purge)';
+      }
+    });
+
+    // Modals
+    const cartModal = document.getElementById('cartModal');
+    const infoModal = document.getElementById('infoModal');
+
+    document.getElementById('cartBtn').onclick = () => { updateCartUI(); cartModal.style.display = 'block'; };
+    document.getElementById('closeCartModal').onclick = () => { cartModal.style.display = 'none'; };
+
+    document.getElementById('systemInfoBtn').onclick = async () => {
+      infoModal.style.display = 'block';
+      try {
+        const healthRes = await fetch('/health');
+        const hData = await healthRes.json();
+        document.getElementById('metricStatus').innerText = hData.status;
+        document.getElementById('metricCache').innerText = `${hData.cache.engine} (${hData.cache.latencyMs || 0}ms)`;
+        document.getElementById('metricDb').innerText = `${hData.database.engine} (${hData.database.latencyMs || 0}ms)`;
+        document.getElementById('metricHost').innerText = hData.servingInstance ? hData.servingInstance.hostname : '-';
+
+        const ordRes = await fetch('/api/orders');
+        const oData = await ordRes.json();
+        const ordDiv = document.getElementById('ordersList');
+        if (oData.count === 0) {
+          ordDiv.innerHTML = '<p>No orders placed yet.</p>';
+        } else {
+          ordDiv.innerHTML = oData.data.map(o => `
+            <div class="order-chip">
+              <div>
+                <strong>#${o.id} - ${o.customer_name}</strong>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">$${parseFloat(o.total_amount).toFixed(2)} &bull; ${new Date(o.created_at).toLocaleTimeString()}</div>
+              </div>
+              <span class="order-host-tag">${o.served_by_host || 'EC2'}</span>
+            </div>
+          `).join('');
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    document.getElementById('closeInfoModal').onclick = () => { infoModal.style.display = 'none'; };
+
+    window.onclick = (e) => {
+      if (e.target === cartModal) cartModal.style.display = 'none';
+      if (e.target === infoModal) infoModal.style.display = 'none';
+    };
+
+    // Initial load
+    loadProducts();
+    checkHealth();
+    setInterval(checkHealth, 15000);
+  </script>
+</body>
+</html>

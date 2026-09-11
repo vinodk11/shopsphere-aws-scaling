@@ -245,6 +245,41 @@ You can deploy Stage 3 automatically using either:
 1. **Dedicated Pipeline:** Point a Jenkins pipeline job to `stage-3/Jenkinsfile`.
 2. **Root Multi-Stage Pipeline:** Run the root `Jenkinsfile`, select `STAGE = stage-3`, choose `ACTION = apply`, and trigger the build.
 
+#### Required Jenkins Plugins
+
+To ensure the declarative pipeline executes without syntax errors, the following plugins must be installed in Jenkins (**Manage Jenkins** &rarr; **Plugins** &rarr; **Available plugins**):
+
+| Plugin Name | Plugin ID / Short Name | Purpose & Requirement |
+| :--- | :--- | :--- |
+| **Pipeline** | `workflow-aggregator` | Core Declarative Pipeline engine (`pipeline { ... }`, `stages`, `script`, `parameters`) |
+| **Git plugin** | `git` | SCM repository cloning (`git branch: 'main', url: '...'`) |
+| **AnsiColor** | `ansicolor` | **Critical!** Enables terminal ANSI color parsing (`ansiColor('xterm')`). Without this plugin, the pipeline immediately crashes with `NoSuchMethodError: No such DSL method 'ansiColor'`. |
+| **Pipeline: Input Step** | `pipeline-input-step` | Powers the manual `Approval Gate` before Terraform apply/destroy |
+| **Docker Pipeline** *(Optional)* | `docker-workflow` | Docker integration and container lifecycle management |
+| **Credentials Binding** *(Optional)* | `credentials-binding` | Secure binding of AWS credentials or API tokens |
+
+#### Jenkins Server Host Prerequisites
+
+The pipeline executes Terraform inside a `hashicorp/terraform:latest` container using the host's Docker socket:
+
+1. **Docker Service Running:**
+   ```bash
+   sudo systemctl enable --now docker
+   ```
+
+2. **Grant Docker Permissions to Jenkins User:**
+   ```bash
+   sudo usermod -aG docker jenkins
+   sudo systemctl restart jenkins
+   ```
+   > [!IMPORTANT]
+   > After adding `jenkins` to the `docker` group, restart the Jenkins daemon so that permissions take effect.
+
+3. **AWS Authentication:**
+   The container automatically inherits AWS credentials from either:
+   - The Jenkins EC2 server's **IAM Instance Profile** (`AmazonEC2FullAccess`, `AmazonVPCFullAccess`, `AmazonRDSFullAccess`), or
+   - `~/.aws/credentials` configured on the Jenkins host.
+
 ---
 
 ## 7. Verifying the Deployment & Testing
