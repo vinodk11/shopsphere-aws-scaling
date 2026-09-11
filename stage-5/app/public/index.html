@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShopSphere - Stage 5: SQS + AWS Lambda</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Stage Indicator Banner -->
+  <div class="stage-banner">
+    <div class="container banner-content">
+      <span class="badge">AWS Stage 5</span>
+      <span class="stage-desc">ALB &bull; ASG Compute &bull; Redis Caching &bull; Amazon SQS Decoupling &bull; AWS Lambda Serverless Workers &bull; Amazon RDS</span>
+      <div id="systemHealthBadge" class="health-badge"><span class="pulse"></span> Checking System...</div>
+    </div>
+  </div>
+
+  <!-- Header / Navbar -->
+  <header class="navbar">
+    <div class="container nav-container">
+      <div class="brand">
+        <div class="logo-icon">🪐</div>
+        <div>
+          <h1>ShopSphere</h1>
+          <span class="tagline">AWS Architecture Evolution &bull; Stage 5 (SQS + Lambda)</span>
+        </div>
+      </div>
+      <div class="nav-actions">
+        <button id="systemInfoBtn" class="btn btn-secondary">Architecture Info</button>
+        <button id="cartBtn" class="btn btn-primary">
+          <span>🛒 Cart</span>
+          <span id="cartCount" class="cart-count">0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container">
+      <h2>Asynchronous Decoupling &amp; Serverless Workers</h2>
+      <p>Demonstrating non-blocking checkout ingestion with Amazon SQS and automated asynchronous order fulfillment with AWS Lambda.</p>
+
+      <!-- Stage 5 Event-Driven Pipeline Visualizer -->
+      <div class="event-pipeline-card">
+        <div class="event-pipeline-header">
+          <div class="event-pipeline-title">
+            <span>⚡ Event-Driven Order Processing Pipeline</span>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="refreshQueueStats()">
+            <span>🔄 Refresh SQS Stats</span>
+          </button>
+        </div>
+
+        <div class="pipeline-flow">
+          <!-- Step 1: Ingestion -->
+          <div class="flow-step active">
+            <div class="flow-step-header">
+              <span>🛒</span>
+              <span>1. Order Ingestion</span>
+            </div>
+            <div class="flow-step-desc">ALB &bull; EC2 Fleet</div>
+            <div class="flow-metric">Status: <span style="color: var(--accent-green);">Non-blocking</span></div>
+          </div>
+
+          <!-- Step 2: SQS Queue -->
+          <div class="flow-step active">
+            <div class="flow-step-header">
+              <span>📬</span>
+              <span>2. Amazon SQS</span>
+            </div>
+            <div class="flow-step-desc">Buffered Event Queue</div>
+            <div class="flow-metric">Pending in Queue: <span id="queueCountVal" style="color: var(--accent-amber);">0</span></div>
+          </div>
+
+          <!-- Step 3: AWS Lambda Worker -->
+          <div class="flow-step active">
+            <div class="flow-step-header">
+              <span>λ</span>
+              <span>3. AWS Lambda</span>
+            </div>
+            <div class="flow-step-desc">Serverless Fulfillment</div>
+            <div class="flow-metric">Trigger: <span style="color: var(--accent-lambda);">SQS Batch</span></div>
+          </div>
+
+          <!-- Step 4: Storage -->
+          <div class="flow-step active">
+            <div class="flow-step-header">
+              <span>🗄️</span>
+              <span>4. Amazon RDS</span>
+            </div>
+            <div class="flow-step-desc">PostgreSQL Consistency</div>
+            <div class="flow-metric">Final State: <span style="color: var(--accent-green);">FULFILLED</span></div>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">
+          <span id="servingHostText">Serving Node: Detecting...</span>
+          <span id="lastCheckoutSpeed">Last Checkout API Latency: - ms</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Content -->
+  <main class="container main-content">
+    <div class="section-header">
+      <h3>Featured Products</h3>
+      <span id="productCounter" class="counter-text">Loading catalog...</span>
+    </div>
+
+    <!-- Product Grid -->
+    <div id="productGrid" class="product-grid">
+      <!-- Dynamic products loaded here -->
+    </div>
+  </main>
+
+  <!-- System Info Modal -->
+  <div id="infoModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Architecture Details (Stage 5)</h3>
+        <button class="close-btn" id="closeInfoModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="arch-box">
+          <code>Checkout &rarr; ASG EC2 &rarr; RDS (PENDING) &rarr; Amazon SQS Queue &rarr; AWS Lambda Worker &rarr; RDS (FULFILLED) + CloudWatch Logs</code>
+        </div>
+        <div class="metrics-grid" id="systemMetrics">
+          <div class="metric-card">
+            <span class="metric-label">App Status</span>
+            <span class="metric-val" id="metricStatus">-</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Message Queue</span>
+            <span class="metric-val" id="metricQueue">-</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Database Tier</span>
+            <span class="metric-val" id="metricDb">-</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Serving Node</span>
+            <span class="metric-val" id="metricHost">-</span>
+          </div>
+        </div>
+        <h4 style="margin-top: 1.5rem; margin-bottom: 0.5rem;">Recent Orders &amp; Fulfillment Lifecycle</h4>
+        <div id="ordersList" class="orders-list">Loading orders...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cart / Checkout Modal -->
+  <div id="cartModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Your Shopping Cart</h3>
+        <button class="close-btn" id="closeCartModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="cartItems" class="cart-items">
+          <p class="empty-cart-msg">Your cart is empty.</p>
+        </div>
+        <div class="cart-summary">
+          <div class="total-row">
+            <span>Total:</span>
+            <span id="cartTotal" class="total-amount">$0.00</span>
+          </div>
+        </div>
+
+        <form id="checkoutForm" class="checkout-form" style="display: none;">
+          <h4>Checkout Details</h4>
+          <div class="form-group">
+            <label>Full Name</label>
+            <input type="text" id="custName" required placeholder="Alex Developer" value="Alex Developer">
+          </div>
+          <div class="form-group">
+            <label>Email Address</label>
+            <input type="email" id="custEmail" required placeholder="alex@example.com" value="alex@example.com">
+          </div>
+          <div class="form-group">
+            <label>Shipping Address</label>
+            <textarea id="custAddress" required rows="2" placeholder="100 Cloud Way, Seattle, WA">100 Cloud Way, Suite 404, Seattle, WA 98101</textarea>
+          </div>
+          <button type="submit" id="submitOrderBtn" class="btn btn-lambda btn-block">
+            <span>🚀 Place Order (Asynchronous SQS Ingestion)</span>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container footer-content">
+      <p>&copy; 2026 ShopSphere Project &bull; Built for AWS Architecture Learning</p>
+      <p class="footer-sub">Stage 5: SQS + AWS Lambda + Redis + ALB + ASG + RDS &bull; Managed by Terraform</p>
+    </div>
+  </footer>
+
+  <script>
+    let cart = [];
+    let products = [];
+
+    // Fetch Products with Cache-Aside
+    async function loadProducts() {
+      try {
+        const res = await fetch('/api/products');
+        const data = await res.json();
+        if (data.success) {
+          products = data.data;
+          renderProducts(products);
+          document.getElementById('productCounter').innerText = `${products.length} Products Available`;
+          if (data.servedBy) {
+            document.getElementById('servingHostText').innerText = `Serving Node: ${data.servedBy}`;
+          }
+        }
+      } catch (err) {
+        document.getElementById('productGrid').innerHTML = `<p class="error-msg">Error loading catalog: ${err.message}</p>`;
+      }
+    }
+
+    function renderProducts(items) {
+      const grid = document.getElementById('productGrid');
+      grid.innerHTML = items.map(p => `
+        <div class="product-card">
+          <div class="img-wrapper">
+            <img src="${p.image_url}" alt="${p.name}" loading="lazy">
+            <span class="category-tag">${p.category_name || 'General'}</span>
+          </div>
+          <div class="card-body">
+            <h4 class="product-title">${p.name}</h4>
+            <p class="product-desc">${p.description}</p>
+            <div class="card-footer">
+              <div class="price-box">
+                <span class="price-val">$${parseFloat(p.price).toFixed(2)}</span>
+                <span class="stock-badge">In Stock: ${p.stock_quantity}</span>
+              </div>
+              <button class="btn btn-sm btn-primary" onclick="addToCart(${p.id})">Add to Cart</button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Refresh SQS Queue Stats
+    async function refreshQueueStats() {
+      try {
+        const res = await fetch('/api/queue/stats');
+        const data = await res.json();
+        if (data.success && data.configured) {
+          document.getElementById('queueCountVal').innerText = data.approximateMessages;
+        } else {
+          document.getElementById('queueCountVal').innerText = '0 (Direct)';
+        }
+      } catch (e) {
+        console.warn('Queue stats notice:', e);
+      }
+    }
+
+    // Health Check
+    async function checkHealth() {
+      try {
+        const res = await fetch('/health');
+        const data = await res.json();
+        const badge = document.getElementById('systemHealthBadge');
+        if (data.status === 'UP') {
+          badge.className = 'health-badge health-up';
+          const qStatus = data.queue?.queueConfigured ? 'SQS Active' : 'SQS Fallback';
+          badge.innerHTML = `<span class="pulse green"></span> RDS (${data.database.latencyMs}ms) &bull; ${qStatus}`;
+        } else {
+          badge.className = 'health-badge health-down';
+          badge.innerHTML = `<span class="pulse red"></span> Degraded`;
+        }
+      } catch (e) {
+        const badge = document.getElementById('systemHealthBadge');
+        badge.className = 'health-badge health-down';
+        badge.innerHTML = `<span class="pulse red"></span> Offline`;
+      }
+    }
+
+    // Cart Management
+    function addToCart(productId) {
+      const prod = products.find(p => p.id === productId);
+      if (!prod) return;
+      const existing = cart.find(item => item.productId === productId);
+      if (existing) {
+        existing.quantity += 1;
+      } else {
+        cart.push({ productId: prod.id, name: prod.name, price: parseFloat(prod.price), quantity: 1 });
+      }
+      updateCartUI();
+    }
+
+    function updateCartUI() {
+      const count = cart.reduce((sum, item) => sum + item.quantity, 0);
+      document.getElementById('cartCount').innerText = count;
+
+      const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      document.getElementById('cartTotal').innerText = `$${total.toFixed(2)}`;
+
+      const cartItemsDiv = document.getElementById('cartItems');
+      const checkoutForm = document.getElementById('checkoutForm');
+
+      if (cart.length === 0) {
+        cartItemsDiv.innerHTML = '<p class="empty-cart-msg">Your cart is empty.</p>';
+        checkoutForm.style.display = 'none';
+      } else {
+        checkoutForm.style.display = 'block';
+        cartItemsDiv.innerHTML = cart.map((item, idx) => `
+          <div class="cart-item-row">
+            <div>
+              <strong>${item.name}</strong>
+              <div class="item-calc">$${item.price.toFixed(2)} &times; ${item.quantity}</div>
+            </div>
+            <div class="item-actions">
+              <span class="item-subtotal">$${(item.price * item.quantity).toFixed(2)}</span>
+              <button class="remove-btn" onclick="removeFromCart(${idx})">&times;</button>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+
+    function removeFromCart(idx) {
+      cart.splice(idx, 1);
+      updateCartUI();
+    }
+
+    // Asynchronous Checkout Form
+    document.getElementById('checkoutForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('submitOrderBtn');
+      btn.disabled = true;
+      btn.innerText = 'Publishing to SQS...';
+
+      const payload = {
+        customerName: document.getElementById('custName').value,
+        customerEmail: document.getElementById('custEmail').value,
+        shippingAddress: document.getElementById('custAddress').value,
+        items: cart.map(i => ({ productId: i.productId, quantity: i.quantity }))
+      };
+
+      try {
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          document.getElementById('lastCheckoutSpeed').innerText = `Last Checkout API Latency: ${data.checkoutLatencyMs}ms (Instant SQS Response)`;
+          alert(`🎉 Order #${data.orderId} Accepted! Status: PENDING.\nPublished to SQS in ${data.checkoutLatencyMs}ms.\nAWS Lambda will process fulfillment in the background.`);
+          cart = [];
+          updateCartUI();
+          document.getElementById('cartModal').style.display = 'none';
+          loadProducts(); // refresh catalog stock
+          refreshQueueStats();
+        } else {
+          alert(`Error: ${data.error}`);
+        }
+      } catch (err) {
+        alert(`Failed to place order: ${err.message}`);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = '🚀 Place Order (Asynchronous SQS Ingestion)';
+      }
+    });
+
+    // Modals
+    const cartModal = document.getElementById('cartModal');
+    const infoModal = document.getElementById('infoModal');
+
+    document.getElementById('cartBtn').onclick = () => { updateCartUI(); cartModal.style.display = 'block'; };
+    document.getElementById('closeCartModal').onclick = () => { cartModal.style.display = 'none'; };
+
+    document.getElementById('systemInfoBtn').onclick = async () => {
+      infoModal.style.display = 'block';
+      try {
+        const healthRes = await fetch('/health');
+        const hData = await healthRes.json();
+        document.getElementById('metricStatus').innerText = hData.status;
+        document.getElementById('metricQueue').innerText = hData.queue?.queueConfigured ? 'Amazon SQS' : 'Fallback';
+        document.getElementById('metricDb').innerText = `${hData.database.engine} (${hData.database.latencyMs || 0}ms)`;
+        document.getElementById('metricHost').innerText = hData.servingInstance ? hData.servingInstance.hostname : '-';
+
+        const ordRes = await fetch('/api/orders');
+        const oData = await ordRes.json();
+        const ordDiv = document.getElementById('ordersList');
+        if (!oData.data || oData.data.length === 0) {
+          ordDiv.innerHTML = '<p>No orders placed yet.</p>';
+        } else {
+          ordDiv.innerHTML = oData.data.map(o => {
+            const statusClass = (o.status || 'PENDING').toLowerCase();
+            const workerInfo = o.processed_by_worker ? ` &bull; Worker: ${o.processed_by_worker}` : '';
+            return `
+              <div class="order-row-card">
+                <div>
+                  <div><strong>#${o.id} - ${o.customer_name}</strong> &bull; $${parseFloat(o.total_amount).toFixed(2)}</div>
+                  <div class="order-worker-meta">Created: ${new Date(o.created_at).toLocaleTimeString()} &bull; Ingested by: ${o.served_by_host || 'ASG'}${workerInfo}</div>
+                </div>
+                <span class="status-pill ${statusClass}">${o.status}</span>
+              </div>
+            `;
+          }).join('');
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    document.getElementById('closeInfoModal').onclick = () => { infoModal.style.display = 'none'; };
+
+    window.onclick = (e) => {
+      if (e.target === cartModal) cartModal.style.display = 'none';
+      if (e.target === infoModal) infoModal.style.display = 'none';
+    };
+
+    // Initial load
+    loadProducts();
+    checkHealth();
+    refreshQueueStats();
+    setInterval(checkHealth, 15000);
+    setInterval(refreshQueueStats, 10000);
+  </script>
+</body>
+</html>

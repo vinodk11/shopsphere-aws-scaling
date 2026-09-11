@@ -3,14 +3,9 @@ pipeline {
 
     parameters {
         choice(
-            name: 'STAGE',
-            choices: ['stage-1', 'stage-2', 'stage-3', 'stage-4', 'stage-5'],
-            description: 'Select ShopSphere stage (stage-1 = Monolith, stage-2 = EC2 + RDS, stage-3 = ALB + ASG, stage-4 = Redis, stage-5 = SQS + Lambda)'
-        )
-        choice(
             name: 'ACTION',
             choices: ['plan', 'apply', 'destroy'],
-            description: 'Terraform action'
+            description: 'Terraform action to perform on Stage-5 (ALB + ASG + Redis + RDS + Amazon SQS + AWS Lambda)'
         )
         booleanParam(
             name: 'AUTO_APPROVE',
@@ -21,7 +16,7 @@ pipeline {
 
     environment {
         TF_IN_AUTOMATION = 'true'
-        TF_DIR           = "${params.STAGE}/terraform"
+        TF_DIR           = 'stage-5/terraform'
         TF_IMAGE         = 'hashicorp/terraform:latest'
     }
 
@@ -35,14 +30,14 @@ pipeline {
 
         stage('Checkout SCM') {
             steps {
-                echo "🚀 Checking out ShopSphere repository for ${params.STAGE}..."
+                echo "🚀 Checking out ShopSphere Stage 5 repository..."
                 git branch: 'main', url: 'https://github.com/vinodk11/shopsphere-aws-scaling.git'
             }
         }
 
         stage('Terraform Init & Validate') {
             steps {
-                echo "🔧 Running terraform init & validate via Docker container..."
+                echo "🔧 Running terraform init & validate via Docker container for Stage-5 (SQS + Lambda + ASG + Redis + RDS)..."
                 sh """
                     docker run --rm \
                         -v \$(pwd):/workspace \
@@ -69,7 +64,7 @@ pipeline {
             steps {
                 script {
                     if (params.ACTION == 'destroy') {
-                        echo "⚠️ Generating DESTROY plan for ${params.STAGE}..."
+                        echo "⚠️ Generating DESTROY plan for Stage-5..."
                         sh """
                             docker run --rm \
                                 -v \$(pwd):/workspace \
@@ -78,7 +73,7 @@ pipeline {
                                 ${env.TF_IMAGE} plan -destroy -out=tfplan -input=false
                         """
                     } else {
-                        echo "📋 Generating execution plan for ${params.STAGE}..."
+                        echo "📋 Generating execution plan for Stage-5..."
                         sh """
                             docker run --rm \
                                 -v \$(pwd):/workspace \
@@ -102,7 +97,7 @@ pipeline {
                     def actionText = params.ACTION == 'destroy' ? 'DESTROY' : 'APPLY'
                     input(
                         id: 'TerraformApproval',
-                        message: "Review the plan above. Proceed with Terraform ${actionText} on ${params.STAGE}?",
+                        message: "Review the plan above. Proceed with Terraform ${actionText} on Stage-5 (SQS + Lambda + ElastiCache Redis + Amazon RDS + ALB + ASG)?",
                         ok: "Proceed with ${actionText}"
                     )
                 }
@@ -116,7 +111,7 @@ pipeline {
             steps {
                 script {
                     if (params.ACTION == 'apply') {
-                        echo "🚀 Applying ${params.STAGE} infrastructure via Docker..."
+                        echo "🚀 Applying Stage-5 infrastructure (SQS + Lambda + ASG + Redis + RDS) via Docker..."
                         sh """
                             docker run --rm \
                                 -v \$(pwd):/workspace \
@@ -125,7 +120,7 @@ pipeline {
                                 ${env.TF_IMAGE} apply -input=false tfplan
                         """
                     } else if (params.ACTION == 'destroy') {
-                        echo "💥 Destroying ${params.STAGE} infrastructure via Docker..."
+                        echo "💥 Destroying Stage-5 infrastructure via Docker..."
                         sh """
                             docker run --rm \
                                 -v \$(pwd):/workspace \
@@ -138,48 +133,64 @@ pipeline {
             }
         }
 
-        stage('Smoke Test & Health Verification') {
+        stage('Smoke Test & Decoupled Pipeline Verification') {
             when {
                 expression { return params.ACTION == 'apply' }
             }
             steps {
                 dir("${env.TF_DIR}") {
-                    echo "🩺 Verifying ShopSphere Storefront Health endpoint..."
+                    echo "🩺 Verifying Stage-5 Storefront, SQS Queue, and Lambda Worker..."
                     sh '''
                         ALB_DNS=$(grep -o '"alb_dns_name": *"[^"]*"' terraform.tfstate | head -n1 | cut -d '"' -f4 || true)
-                        EC2_IP=$(grep -o '"public_ip": *"[^"]*"' terraform.tfstate | head -n1 | cut -d '"' -f4 || true)
-                        TARGET_HOST="${ALB_DNS:-$EC2_IP}"
 
-                        if [ -z "$TARGET_HOST" ]; then
-                            echo "⚠️ Could not parse endpoint (ALB DNS or EC2 IP) from state, skipping health test."
+                        if [ -z "$ALB_DNS" ]; then
+                            echo "⚠️ Could not parse ALB DNS name from state, skipping health test."
                             exit 0
                         fi
 
-                        HEALTH_URL="http://${TARGET_HOST}/health"
-                        echo "Target Health Check: $HEALTH_URL"
-                        echo "Waiting for instance bootstrap and health endpoint to be ready..."
+                        HEALTH_URL="http://${ALB_DNS}/health"
+                        echo "Target ALB Health Check: $HEALTH_URL"
+                        echo "Waiting for ASG instances, RDS, Redis, and SQS connectivity..."
 
                         ATTEMPTS=0
-                        MAX_ATTEMPTS=20
+                        MAX_ATTEMPTS=30
                         SUCCESS=0
 
                         until [ $ATTEMPTS -ge $MAX_ATTEMPTS ]; do
                             RES=$(curl -s "$HEALTH_URL" || true)
                             if echo "$RES" | grep -q '"status":"UP"'; then
-                                echo "✅ Application is UP and healthy!"
+                                echo "✅ Stage-5 is UP and healthy!"
                                 echo "$RES"
                                 SUCCESS=1
                                 break
                             else
-                                echo "⏳ Attempt $((ATTEMPTS+1))/$MAX_ATTEMPTS: Waiting for instance bootstrap (15s)..."
+                                echo "⏳ Attempt $((ATTEMPTS+1))/$MAX_ATTEMPTS: Waiting for instance bootstrap & health check (15s)..."
                                 sleep 15
                                 ATTEMPTS=$((ATTEMPTS+1))
                             fi
                         done
 
                         if [ $SUCCESS -ne 1 ]; then
-                            echo "❌ Health check timed out after 5 minutes."
+                            echo "❌ Health check timed out after 7.5 minutes."
                             exit 1
+                        fi
+
+                        echo "📬 1. Checking SQS Queue Statistics via API:"
+                        curl -s "http://${ALB_DNS}/api/queue/stats" || true
+                        echo ""
+
+                        echo "🛒 2. Submitting Asynchronous Order (Non-blocking HTTP 202 Accepted):"
+                        ORDER_RESP=$(curl -s -X POST "http://${ALB_DNS}/api/orders" \
+                            -H "Content-Type: application/json" \
+                            -d '{"customerName":"Jenkins Test","customerEmail":"jenkins@shopsphere.io","shippingAddress":"100 Cloud Blvd, Seattle WA","items":[{"productId":1,"quantity":1}]}')
+                        echo "Order Placement Response: $ORDER_RESP"
+
+                        ORDER_ID=$(echo "$ORDER_RESP" | grep -o '"orderId":[0-9]*' | cut -d: -f2 || true)
+                        if [ -n "$ORDER_ID" ]; then
+                            echo "✅ Order #${ORDER_ID} ingested! Polling for Lambda worker fulfillment..."
+                            sleep 3
+                            curl -s "http://${ALB_DNS}/api/orders/${ORDER_ID}/status" || true
+                            echo ""
                         fi
                     '''
                 }
@@ -194,10 +205,10 @@ pipeline {
             }
         }
         success {
-            echo "🎉 ShopSphere ${params.STAGE.toUpperCase()} ${params.ACTION.toUpperCase()} completed successfully!"
+            echo "🎉 ShopSphere Stage-5 ${params.ACTION.toUpperCase()} completed successfully!"
         }
         failure {
-            echo "❌ ShopSphere ${params.STAGE.toUpperCase()} Pipeline failed. Check console output."
+            echo "❌ ShopSphere Stage-5 Pipeline failed. Check console output."
         }
     }
 }

@@ -7,23 +7,16 @@ Welcome to the **ShopSphere AWS Scaling** repository. This project demonstrates 
 ## 🗺️ Architecture Roadmap
 
 ```
-Stage 1: Single EC2 Instance + Colocated Database (Baseline Monolith)
-   ↓
-Stage 2: EC2 Application Tier + Managed Amazon RDS PostgreSQL (Database Decoupling)
-   ↓
-Stage 3: ALB + Auto Scaling Group + Multi-EC2 + Amazon RDS (Horizontal Scaling & High Availability)
-   ↓
-Stage 4: Amazon ElastiCache / Redis (In-Memory Caching & Session Management)
-   ↓
-Stage 5: Amazon SQS + AWS Lambda (Asynchronous Order Processing & Decoupled Tasks)
-   ↓
-Stage 6: Amazon CloudFront + AWS WAF + Multi-AZ Resiliency (Global CDN & Edge Security)
-   ↓
-Stage 7: Docker Containerization (Standardized Packaging & Microservices)
-   ↓
-Stage 8: Amazon EKS + Kubernetes (Container Orchestration & Microservice Networking)
-   ↓
-Stage 9: GitOps + Argo CD + Full Observability (Cloud Native CI/CD & Distributed Tracing)
+Stage 1  → Monolith + EC2
+Stage 2  → RDS PostgreSQL (Database Decoupling)
+Stage 3  → ALB + Auto Scaling Group (Horizontal Scaling & High Availability)
+Stage 4  → Redis / ElastiCache (In-Memory Caching & Session Management)
+Stage 5  → SQS + Lambda (Decoupled Asynchronous Order Processing)
+Stage 6  → CloudFront + WAF (Global Edge CDN & Web Security)
+Stage 7  → DevSecOps (SAST, DAST, SCA, Secrets Detection, Image Scanning, Pipeline Security)
+Stage 8  → Docker (Containerization & Multi-Stage Builds)
+Stage 9  → EKS (Kubernetes Container Orchestration & Microservices)
+Stage 10 → GitOps / Argo CD (Continuous Delivery & Full Observability)
 ```
 
 ---
@@ -36,14 +29,15 @@ Stage 9: GitOps + Argo CD + Full Observability (Cloud Native CI/CD & Distributed
 | **Stage 2** | [`stage-2/`](stage-2/README.md) | EC2 compute, decoupled Amazon RDS PostgreSQL, multi-tier VPC | ✅ Completed |
 | **Stage 3** | [`stage-3/`](stage-3/README.md) | Application Load Balancer, Multi-AZ Auto Scaling Group, Amazon RDS | ✅ Completed |
 | **Stage 4** | [`stage-4/`](stage-4/README.md) | In-Memory Amazon ElastiCache Redis, Cache-Aside, Sub-ms Latency | ✅ Completed |
+| **Stage 5** | [`stage-5/`](stage-5/README.md) | Amazon SQS + AWS Lambda, Non-blocking Checkouts, DLQ Redrive | ✅ Completed |
 
 ---
 
 ## 🚀 CI/CD Automation
 
 This repository includes:
-- A root [`Jenkinsfile`](Jenkinsfile) capable of dynamically planning, applying, or destroying any stage (`stage-1`, `stage-2`, `stage-3`, or `stage-4`) using containerized Terraform with approval gates and automated health verification.
-- Dedicated standalone pipelines in each stage directory (`stage-1/Jenkinsfile`, `stage-2/Jenkinsfile`, `stage-3/Jenkinsfile`, `stage-4/Jenkinsfile`).
+- A root [`Jenkinsfile`](Jenkinsfile) capable of dynamically planning, applying, or destroying any stage (`stage-1`, `stage-2`, `stage-3`, `stage-4`, or `stage-5`) using containerized Terraform with approval gates and automated health verification.
+- Dedicated standalone pipelines in each stage directory (`stage-1/Jenkinsfile`, `stage-2/Jenkinsfile`, `stage-3/Jenkinsfile`, `stage-4/Jenkinsfile`, `stage-5/Jenkinsfile`).
 
 ### Required Jenkins Plugins
 
