@@ -1,0 +1,446 @@
+I am building a real-world AWS architecture project called "ShopSphere".
+
+The goal of this project is to demonstrate the evolution of an e-commerce application from a single-server architecture to a highly scalable AWS architecture and eventually to Amazon EKS/Kubernetes.
+
+For now, implement ONLY STAGE 1.
+
+==================================================
+PROJECT: ShopSphere
+STAGE 1: SINGLE EC2 + DATABASE
+==================================================
+
+The application is a ShopSphere monolithic e-commerce application.
+
+For Stage 1, intentionally keep the architecture simple:
+
+Internet
+   |
+   v
+EC2 Instance
+   |
+   +-- ShopSphere Monolithic Application
+   |
+   +-- Database
+       |
+       +-- PostgreSQL/MySQL
+
+The application and database must run on the SAME EC2 instance.
+
+DO NOT introduce the following services in Stage 1:
+
+- Amazon RDS
+- Application Load Balancer
+- Auto Scaling Group
+- ElastiCache/Redis
+- SQS
+- Lambda
+- CloudFront
+- WAF
+- EKS
+- Kubernetes
+- ECS
+- Argo CD
+
+These will be introduced in later stages.
+
+==================================================
+OBJECTIVE
+==================================================
+
+Create Terraform infrastructure that provisions a basic AWS environment suitable for running the ShopSphere monolith on one EC2 instance.
+
+The infrastructure should be designed cleanly so that we can extend it in later stages without rewriting everything.
+
+==================================================
+AWS ARCHITECTURE
+==================================================
+
+Create:
+
+1. VPC
+2. Internet Gateway
+3. One public subnet
+4. Route table
+5. Route table association
+6. Security Group
+7. One EC2 instance
+8. IAM role/profile for EC2 if required
+9. Outputs for important resources
+
+Use a single Availability Zone for Stage 1.
+
+The EC2 instance must have internet connectivity through the Internet Gateway.
+
+==================================================
+NETWORKING
+==================================================
+
+Create a dedicated VPC.
+
+Example:
+
+CIDR:
+10.0.0.0/16
+
+Public subnet:
+
+10.0.1.0/24
+
+Use variables instead of hardcoding values wherever practical.
+
+The subnet should automatically assign a public IPv4 address to the EC2 instance.
+
+Configure:
+
+VPC
+ |
+ +-- Internet Gateway
+ |
+ +-- Public Subnet
+       |
+       +-- Route Table
+             |
+             +-- 0.0.0.0/0 -> Internet Gateway
+
+==================================================
+EC2
+==================================================
+
+Use a configurable Amazon Linux AMI.
+
+Do not hardcode an AMI ID because AMI IDs differ by region.
+
+Use a Terraform data source to find the latest suitable Amazon Linux AMI.
+
+EC2 requirements:
+
+- Instance type must be configurable through a variable.
+- Default to a small development-friendly instance.
+- Root EBS volume should be configurable.
+- Enable encrypted EBS storage.
+- Attach the security group.
+- Assign a public IP.
+- Use an IAM instance profile if required.
+- Add useful Name tags.
+
+Example:
+
+Name = "shopsphere-stage1-ec2"
+
+==================================================
+SECURITY GROUP
+==================================================
+
+Create a dedicated security group for the ShopSphere EC2 instance.
+
+Allow:
+
+HTTP  -> 80
+HTTPS -> 443
+SSH   -> 22
+
+SSH must NOT be open to the entire internet by default.
+
+Create a variable such as:
+
+admin_cidr
+
+and use that CIDR for SSH access.
+
+For example:
+
+admin_cidr = ["YOUR_PUBLIC_IP/32"]
+
+HTTP/HTTPS can be temporarily open for the Stage 1 application.
+
+Do not create unnecessarily broad inbound rules.
+
+Allow outbound traffic as required.
+
+==================================================
+APPLICATION DEPLOYMENT
+==================================================
+
+Use EC2 user_data to bootstrap the server.
+
+The user_data should:
+
+1. Update the operating system.
+2. Install required packages.
+3. Install Git.
+4. Install the runtime required by the ShopSphere application.
+5. Install the database required by the application.
+6. Start and enable the database service.
+7. Clone the ShopSphere application repository.
+8. Configure the application to connect to the local database.
+9. Build the application if required.
+10. Start the ShopSphere application as a systemd service.
+
+IMPORTANT:
+
+Before implementing the application bootstrap, inspect the actual ShopSphere repository and determine:
+
+- Programming language
+- Framework
+- Build system
+- Required runtime version
+- Database type
+- Database name
+- Required environment variables
+- Application startup command
+- Application listening port
+
+Do NOT assume Spring Boot/PostgreSQL/MySQL unless the repository confirms it.
+
+==================================================
+DATABASE
+==================================================
+
+For Stage 1 the database must run locally on the same EC2 instance.
+
+Configure:
+
+- Database installation
+- Database service
+- Database user
+- Database password
+- Database name
+- Initial configuration required by ShopSphere
+
+Do not store production passwords directly in Git.
+
+For this learning project, Terraform variables may be used, but clearly mark where secrets should eventually be moved to AWS Secrets Manager or HashiCorp Vault.
+
+Do not expose database credentials in Terraform outputs.
+
+==================================================
+APPLICATION CONFIGURATION
+==================================================
+
+The application must connect to:
+
+localhost
+
+for the database because the database is running on the same EC2 instance.
+
+The application should listen on its required port.
+
+If the application runs on port 8080, configure the security group accordingly or preferably use Nginx as a reverse proxy.
+
+==================================================
+NGINX
+==================================================
+
+If appropriate for the ShopSphere application, install Nginx.
+
+Configure:
+
+Internet
+   |
+   v
+Nginx :80
+   |
+   v
+ShopSphere Application :8080
+
+Nginx should reverse proxy requests to the application.
+
+Do not introduce an ALB yet.
+
+==================================================
+TERRAFORM STRUCTURE
+==================================================
+
+Use a clean modular Terraform structure.
+
+Recommended:
+
+shopsphere/
+|
++-- terraform/
+    |
+    +-- main.tf
+    +-- provider.tf
+    +-- variables.tf
+    +-- outputs.tf
+    +-- versions.tf
+    +-- data.tf
+    +-- terraform.tfvars.example
+    |
+    +-- modules/
+        |
+        +-- vpc/
+        |   +-- main.tf
+        |   +-- variables.tf
+        |   +-- outputs.tf
+        |
+        +-- security-group/
+        |   +-- main.tf
+        |   +-- variables.tf
+        |   +-- outputs.tf
+        |
+        +-- ec2/
+            +-- main.tf
+            +-- variables.tf
+            +-- outputs.tf
+
+Keep the modules simple.
+
+Do not over-engineer Stage 1.
+
+==================================================
+TERRAFORM BEST PRACTICES
+==================================================
+
+Use:
+
+- terraform fmt
+- terraform validate
+- terraform plan
+- terraform apply
+
+Pin Terraform and AWS provider versions using versions.tf.
+
+Use variables for:
+
+- AWS region
+- VPC CIDR
+- subnet CIDR
+- availability zone
+- EC2 instance type
+- EBS size
+- SSH/admin CIDR
+- project name
+- environment
+
+Use locals for common naming and tags.
+
+Common tags:
+
+Project     = "ShopSphere"
+Environment = "stage1"
+ManagedBy   = "Terraform"
+
+==================================================
+OUTPUTS
+==================================================
+
+Provide outputs for:
+
+- VPC ID
+- subnet ID
+- security group ID
+- EC2 instance ID
+- EC2 private IP
+- EC2 public IP
+- application URL
+
+Do NOT output passwords or secrets.
+
+==================================================
+README
+==================================================
+
+Create a README.md explaining:
+
+1. Project objective
+2. Stage 1 architecture
+3. Why we are starting with a single EC2 instance
+4. AWS resources created
+5. Network architecture
+6. Application architecture
+7. Database architecture
+8. Terraform directory structure
+9. Prerequisites
+10. Configuration
+11. Terraform deployment commands
+12. How to access ShopSphere
+13. How to SSH into the instance
+14. How to troubleshoot application startup
+15. How to destroy the infrastructure
+
+Include an ASCII architecture diagram.
+
+==================================================
+IMPORTANT ARCHITECTURAL RULE
+==================================================
+
+This is intentionally NOT a production architecture.
+
+The purpose of Stage 1 is to establish a baseline.
+
+We want to be able to demonstrate later:
+
+Stage 1:
+Single EC2 + Local Database
+
+        ↓
+
+Stage 2:
+EC2 + Amazon RDS
+
+        ↓
+
+Stage 3:
+ALB + Auto Scaling + Multiple EC2
+
+        ↓
+
+Stage 4:
+ElastiCache/Redis
+
+        ↓
+
+Stage 5:
+SQS + Lambda
+
+        ↓
+
+Stage 6:
+CloudFront + WAF + Multi-AZ architecture
+
+        ↓
+
+Stage 7:
+Docker + Containerization
+
+        ↓
+
+Stage 8:
+Amazon EKS + Kubernetes
+
+        ↓
+
+Stage 9:
+GitOps + Argo CD + Observability
+
+Therefore, keep Stage 1 intentionally simple and do not implement future-stage components.
+
+==================================================
+EXPECTED RESPONSE
+==================================================
+
+Before generating Terraform code:
+
+1. Inspect the ShopSphere repository structure.
+2. Identify the exact application technology stack.
+3. Identify the database technology.
+4. Identify the application port.
+5. Identify the required environment variables.
+6. Explain any assumptions.
+
+Then provide:
+
+1. Architecture explanation
+2. Directory structure
+3. Complete Terraform files
+4. EC2 user_data/bootstrap script
+5. Application configuration
+6. README
+7. Deployment commands
+8. Validation commands
+9. Troubleshooting steps
+
+Make all code internally consistent and ready to run after replacing environment-specific values.
+
+Do not skip files or use placeholders such as "add your code here".

@@ -1,0 +1,32 @@
+# Local .terraform directories
+**/.terraform/*
+**/.terraform/
+
+# .tfstate files
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Exclude all .tfvars files, which might contain sensitive data like db passwords
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Node / npm
+node_modules/
+npm-debug.log
+.npm/
+
+# Environment files
+.env
+.env.local
+
+# OS / Editor artifacts
+.DS_Store
+*.swp
+*.swo
