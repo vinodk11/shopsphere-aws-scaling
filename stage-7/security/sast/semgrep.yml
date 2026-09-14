@@ -1,0 +1,91 @@
+# Semgrep SAST Rule Configuration for ShopSphere (Node.js & Express)
+# Covers OWASP Top 10: Injection, Broken Access Control, Security Misconfiguration, Insecure Design
+
+rules:
+  - id: shopsphere-sqli-template-string
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: "Potential SQL Injection detected. Detected query concatenation or template literal passed to pool.query/client.query. Always use parameterized queries ($1, $2)."
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $POOL.query(`...${$VAR}...`, ...)
+          - pattern: |
+              $POOL.query($SQL + $VAR, ...)
+          - pattern: |
+              $CLIENT.query(`...${$VAR}...`, ...)
+          - pattern: |
+              $CLIENT.query($SQL + $VAR, ...)
+    metadata:
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+      owasp: "A03:2021 - Injection"
+      category: security
+      confidence: HIGH
+
+  - id: shopsphere-insecure-cors
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: "Wildcard CORS origin detected without environment gating. In production, restrict CORS origins to trusted domains."
+    patterns:
+      - pattern: |
+          cors({origin: "*", ...})
+    metadata:
+      cwe: "CWE-942: Permissive Cross-domain Policy with Untrusted Domains"
+      owasp: "A01:2021 - Broken Access Control"
+      category: security
+      confidence: MEDIUM
+
+  - id: shopsphere-hardcoded-secret
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: "Potential hardcoded credential or secret detected. Always retrieve credentials from environment variables or AWS Secrets Manager."
+    patterns:
+      - pattern-either:
+          - pattern: |
+              const $VAR = "AKIA...";
+          - pattern: |
+              password: "...",
+    pattern-not:
+      - pattern: |
+          password: process.env.$VAR || "...",
+    metadata:
+      cwe: "CWE-798: Use of Hard-coded Credentials"
+      owasp: "A07:2021 - Identification and Authentication Failures"
+      category: security
+      confidence: MEDIUM
+
+  - id: shopsphere-path-traversal
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: "Potential Path Traversal. User input should not be directly concatenated into fs operations or path.join without strict validation."
+    patterns:
+      - pattern-either:
+          - pattern: |
+              fs.readFile(path.join(..., req.$PROP, ...), ...)
+          - pattern: |
+              fs.readFileSync(path.join(..., req.$PROP, ...), ...)
+    metadata:
+      cwe: "CWE-22: Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')"
+      owasp: "A01:2021 - Broken Access Control"
+      category: security
+      confidence: HIGH
+
+  - id: shopsphere-missing-security-headers
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: "Express application missing standard HTTP security headers (Helmet or manual HSTS/CSP headers). Protect against clickjacking, MIME sniffing, and XSS."
+    patterns:
+      - pattern: |
+          const $APP = express();
+          ...
+          $APP.listen(...);
+    pattern-not-inside:
+      - pattern: |
+          ...
+          $APP.use(helmet(...));
+          ...
+    metadata:
+      cwe: "CWE-693: Protection Mechanism Failure"
+      owasp: "A05:2021 - Security Misconfiguration"
+      category: security
+      confidence: LOW

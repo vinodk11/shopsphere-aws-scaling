@@ -1,0 +1,66 @@
+# ==============================================================================
+# ShopSphere Stage 6 Configuration Variables Example
+# CloudFront + AWS WAF + SQS + Lambda + ElastiCache + RDS + ALB + ASG
+# ==============================================================================
+
+aws_region   = "us-east-1"
+project_name = "shopsphere"
+environment  = "stage6"
+
+# Network CIDRs
+vpc_cidr                   = "10.0.0.0/16"
+public_subnet_cidrs        = ["10.0.1.0/24", "10.0.2.0/24"]
+private_db_subnet_cidrs    = ["10.0.10.0/24", "10.0.11.0/24"]
+private_cache_subnet_cidrs = ["10.0.20.0/24", "10.0.21.0/24"]
+
+# EC2 ASG Configuration
+instance_type              = "t3.micro"
+asg_min_size               = 2
+asg_max_size               = 4
+asg_desired_capacity       = 2
+asg_target_cpu_utilization = 70.0
+app_port                   = 8080
+
+# RDS PostgreSQL Configuration
+db_name                    = "shopspheredb"
+db_user                    = "shopsphere_user"
+db_password                = "ShopSphere2026SecurePass!"
+db_engine_version          = "15.7"
+db_instance_class          = "db.t3.micro"
+db_allocated_storage       = 20
+db_max_allocated_storage   = 100
+db_multi_az                = false
+db_skip_final_snapshot     = true
+db_backup_retention_period = 7
+
+# ElastiCache Redis Configuration
+cache_node_type      = "cache.t3.micro"
+redis_engine_version = "7.1"
+redis_port           = 6379
+
+# SQS Queue Configuration
+sqs_visibility_timeout_seconds = 60
+sqs_message_retention_seconds  = 345600
+sqs_max_receive_count          = 3
+sqs_managed_sse_enabled        = true
+
+# AWS Lambda Configuration
+lambda_runtime                            = "nodejs20.x"
+lambda_timeout                            = 30
+lambda_memory_size                        = 256
+lambda_batch_size                         = 10
+lambda_maximum_batching_window_in_seconds = 5
+lambda_log_retention_in_days              = 14
+
+# CloudFront CDN Configuration
+cloudfront_price_class          = "PriceClass_100"
+cloudfront_custom_header_name   = "X-Origin-Verify"
+cloudfront_custom_header_secret = "ShopSphereEdgeSecretToken2026Verify"
+enable_alb_header_lockdown      = true
+
+# AWS WAF Configuration
+waf_rate_limit                   = 500
+waf_enable_rate_limit            = true
+waf_enable_common_rule_set       = true
+waf_enable_known_bad_inputs_rule_set = true
+waf_enable_ip_reputation_rule_set = true

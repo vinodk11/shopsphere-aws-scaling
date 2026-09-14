@@ -31,14 +31,15 @@ Stage 10 → GitOps / Argo CD (Continuous Delivery & Full Observability)
 | **Stage 4** | [`stage-4/`](stage-4/README.md) | In-Memory Amazon ElastiCache Redis, Cache-Aside, Sub-ms Latency | ✅ Completed |
 | **Stage 5** | [`stage-5/`](stage-5/README.md) | Amazon SQS + AWS Lambda, Non-blocking Checkouts, DLQ Redrive | ✅ Completed |
 | **Stage 6** | [`stage-6/`](stage-6/README.md) | Amazon CloudFront CDN, AWS WAFv2, ALB Origin Lockdown | ✅ Completed |
+| **Stage 7** | [`stage-7/`](stage-7/README.md) | DevSecOps Pipeline, Gitleaks, Semgrep, Trivy, Checkov, OWASP ZAP | ✅ Completed |
 
 ---
 
 ## 🚀 CI/CD Automation
 
 This repository includes:
-- A root [`Jenkinsfile`](Jenkinsfile) capable of dynamically planning, applying, or destroying any stage (`stage-1` through `stage-6`) using containerized Terraform with approval gates and automated health verification.
-- Dedicated standalone pipelines in each stage directory (`stage-1/Jenkinsfile` through `stage-6/Jenkinsfile`).
+- A root [`Jenkinsfile`](Jenkinsfile) capable of dynamically planning, applying, or destroying any stage (`stage-1` through `stage-7`) using containerized Terraform with approval gates and automated health verification.
+- Dedicated standalone pipelines in each stage directory (`stage-1/Jenkinsfile` through `stage-7/Jenkinsfile`).
 
 ### Required Jenkins Plugins
 
