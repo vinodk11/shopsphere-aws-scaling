@@ -1,0 +1,19 @@
+{
+  "name": "shopsphere-order-processor",
+  "version": "5.0.0",
+  "description": "ShopSphere Stage 5 AWS Lambda Worker for Asynchronous SQS Order Processing",
+  "main": "index.js",
+  "scripts": {
+    "test": "node -e \"const h = require('./index.js').handler; console.log('Lambda handler exported successfully');\""
+  },
+  "keywords": [
+    "shopsphere",
+    "aws",
+    "sqs",
+    "lambda",
+    "serverless",
+    "ecommerce"
+  ],
+  "author": "ShopSphere DevOps Team",
+  "license": "ISC"
+}
