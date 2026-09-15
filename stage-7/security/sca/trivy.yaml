@@ -15,11 +15,6 @@ ignore-unfixed: false
 
 timeout: 10m
 
-scan:
-  file-patterns:
-    - "**/package.json"
-    - "**/package-lock.json"
-
 vulnerability:
   ignore:
     # Whitelisted CVEs with low risk or dev-only dependencies can be listed here
