@@ -125,7 +125,7 @@ pipeline {
                         -v \$(pwd):/app \
                         -w /app/${env.APP_DIR} \
                         ${env.NODE_IMAGE} \
-                        node --test test/*.test.js
+                        node --test
                 """
             }
         }
