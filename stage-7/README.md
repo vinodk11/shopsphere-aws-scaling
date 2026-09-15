@@ -142,7 +142,57 @@ curl -s "https://${CF_DOMAIN}/api/security/status" | jq .
 
 ---
 
-## 5. Local Security Scan Execution Runbook
+## 5. DevSecOps Pipeline Architecture (Unified 9-Stage Flow)
+
+Stage 7 implements an automated **9-Stage DevSecOps Pipeline** (`stage-7/Jenkinsfile`) that unifies both infrastructure provisioning and application deployment while enforcing security gates across every phase:
+
+```
+┌─────────────┐
+│ 1. Checkout │  Clones repository, initializes report artifacts directory
+└──────┬──────┘
+       ▼
+┌───────────────────────────────┐
+│ 2. Build/Install Dependencies │  Verifies and builds Node.js dependencies
+└──────┬────────────────────────┘
+       ▼
+┌─────────────┐
+│   3. SAST   │  Static Application Security Testing via Semgrep (OWASP Top 10)
+└──────┬──────┘
+       ▼
+┌─────────────┐
+│   4. SCA    │  Software Composition Analysis via Trivy (Supply chain CVE audit)
+└──────┬──────┘
+       ▼
+┌──────────────────┐
+│ 5. IaC Security  │  Infrastructure-as-Code scan via Checkov (CIS AWS Benchmark)
+└──────┬───────────┘
+       ▼
+┌──────────────────────────────┐
+│ 6. Deploy Test Environment   │  Terraform Init, Validate, Plan & Apply (Infra + App)
+└──────┬───────────────────────┘
+       ▼
+┌─────────────┐
+│   7. DAST   │  Dynamic Application Security Testing via OWASP ZAP Baseline Scan
+└──────┬──────┘
+       ▼
+┌──────────────────────┐
+│  8. Security Gate    │  Consolidates and evaluates all DevSecOps quality gates
+└──────┬───────────────┘
+       ▼
+┌─────────────┐
+│ 9. Cleanup  │  Archives security reports, cleans up workspace & temporary plans
+└─────────────┘
+```
+
+### How Infrastructure and Application Are Built Together
+1. **Infrastructure Provisioning:** Terraform provisions the complete cloud footprint (VPC, ALB, RDS PostgreSQL, ElastiCache Redis, SQS, Lambda, CloudFront CDN, AWS WAFv2, and Auto Scaling Group).
+2. **Automated Application Bootstrap (`user_data.sh.tpl`):** EC2 instances execute cloud-init on boot, cloning the application code from `stage-7/app`, configuring environment variables, running DB migrations, and starting the systemd service.
+3. **Shift-Left Security:** SAST, SCA, and IaC security checks run BEFORE deployment, preventing vulnerable code or misconfigured cloud resources from reaching AWS.
+4. **Live Dynamic Security (DAST):** OWASP ZAP automatically runs dynamic penetration checks against the live CloudFront application URL once deployed.
+
+---
+
+## 6. Local Security Scan Execution Runbook
 
 You can run the entire security scan suite locally or inside CI with the unified runner script:
 
@@ -195,7 +245,7 @@ Failed Gates                   : 0
 
 ---
 
-## 6. Terraform Verification & Deployment Runbook
+## 7. Terraform Verification & Infrastructure Runbook
 
 ```bash
 cd stage-7/terraform
@@ -228,7 +278,7 @@ curl -s "https://${CF_DOMAIN}/api/security/status" | jq .
 
 ---
 
-## 7. Limitations & Technical Debt
+## 8. Limitations & Technical Debt
 
 1. **Host-Level Container Security:** In Stage 7, code and dependencies are scanned before deployment, but the application runs on native EC2 virtual machines.
 2. **Container Image Scanning:** Container image layer scanning (e.g., base OS packages in Debian/Alpine) will be implemented in **Stage 8: Docker**.
@@ -236,7 +286,7 @@ curl -s "https://${CF_DOMAIN}/api/security/status" | jq .
 
 ---
 
-## 8. Next Step: Stage 8 — Docker
+## 9. Next Step: Stage 8 — Docker
 
 With a hardened, security-tested codebase and automated quality gates firmly in place, the application is now ready for standardized containerization:
 

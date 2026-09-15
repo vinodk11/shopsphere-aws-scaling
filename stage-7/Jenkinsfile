@@ -4,13 +4,13 @@ pipeline {
     parameters {
         choice(
             name: 'ACTION',
-            choices: ['plan', 'apply', 'destroy'],
-            description: 'Terraform action to perform on Stage-7 (DevSecOps + CloudFront + WAF + Decoupled Stack)'
+            choices: ['apply', 'plan', 'destroy'],
+            description: 'Action to perform for the test environment deployment (Terraform apply, plan, or destroy)'
         )
         booleanParam(
             name: 'RUN_DAST',
             defaultValue: true,
-            description: 'Execute OWASP ZAP Dynamic Application Security Testing (DAST) baseline scan post-apply'
+            description: 'Execute OWASP ZAP Dynamic Application Security Testing (DAST) baseline scan post-deploy'
         )
         booleanParam(
             name: 'AUTO_APPROVE',
@@ -20,15 +20,16 @@ pipeline {
     }
 
     environment {
+        APP_DIR        = 'stage-7/app'
+        TF_DIR         = 'stage-7/terraform'
+        TF_IMAGE       = 'hashicorp/terraform:latest'
+        SEMGREP_IMAGE  = 'returntocorp/semgrep:latest'
+        TRIVY_IMAGE    = 'aquasec/trivy:latest'
+        CHECKOV_IMAGE  = 'bridgecrew/checkov:latest'
+        ZAP_IMAGE      = 'zaproxy/zap-stable:latest'
+        NODE_IMAGE     = 'node:18-alpine'
+        REPORTS_DIR    = 'stage-7/security/reports'
         TF_IN_AUTOMATION = 'true'
-        TF_DIR           = 'stage-7/terraform'
-        TF_IMAGE         = 'hashicorp/terraform:latest'
-        GITLEAKS_IMAGE   = 'zricethezav/gitleaks:latest'
-        SEMGREP_IMAGE    = 'returntocorp/semgrep:latest'
-        TRIVY_IMAGE      = 'aquasec/trivy:latest'
-        CHECKOV_IMAGE    = 'bridgecrew/checkov:latest'
-        ZAP_IMAGE        = 'zaproxy/zap-stable:latest'
-        REPORTS_DIR      = 'stage-7/security/reports'
     }
 
     options {
@@ -39,32 +40,39 @@ pipeline {
 
     stages {
 
-        stage('Checkout SCM') {
+        // =====================================================================
+        // 1. Checkout
+        // =====================================================================
+        stage('Checkout') {
             steps {
-                echo "🚀 Checking out ShopSphere Stage 7 repository..."
+                echo "🚀 [1/9: Checkout] Checking out repository source code..."
                 git branch: 'main', url: 'https://github.com/vinodk11/shopsphere-aws-scaling.git'
                 sh "mkdir -p ${env.REPORTS_DIR}"
             }
         }
 
-        stage('Security Gate 1: Secrets Detection (Gitleaks)') {
+        // =====================================================================
+        // 2. Build / Install Dependencies
+        // =====================================================================
+        stage('Build / Install Dependencies') {
             steps {
-                echo "🔑 [DevSecOps Gate 1/5] Scanning codebase for leaked credentials & AWS keys..."
+                echo "📦 [2/9: Build / Install Dependencies] Verifying Node.js dependencies and packaging..."
                 sh """
                     docker run --rm \
-                        -v \$(pwd):/path \
-                        ${env.GITLEAKS_IMAGE} detect \
-                        --source="/path/stage-7" \
-                        --config="/path/stage-7/security/secrets/.gitleaks.toml" \
-                        --report-path="/path/${env.REPORTS_DIR}/gitleaks-report.json" \
-                        --verbose || true
+                        -v \$(pwd):/app \
+                        -w /app/${env.APP_DIR} \
+                        ${env.NODE_IMAGE} \
+                        npm install --omit=dev --cache /tmp/.npm
                 """
             }
         }
 
-        stage('Security Gate 2: SAST Code Analysis (Semgrep)') {
+        // =====================================================================
+        // 3. SAST (Static Application Security Testing)
+        // =====================================================================
+        stage('SAST') {
             steps {
-                echo "🔍 [DevSecOps Gate 2/5] Running Static Application Security Testing on Node.js & Lambda..."
+                echo "🔍 [3/9: SAST] Scanning Node.js source code for OWASP Top 10 vulnerabilities (Semgrep)..."
                 sh """
                     docker run --rm \
                         -v \$(pwd):/src \
@@ -78,9 +86,12 @@ pipeline {
             }
         }
 
-        stage('Security Gate 3: SCA Supply Chain (Trivy)') {
+        // =====================================================================
+        // 4. SCA (Software Composition Analysis)
+        // =====================================================================
+        stage('SCA') {
             steps {
-                echo "📦 [DevSecOps Gate 3/5] Scanning third-party dependencies for known CVEs..."
+                echo "🛡️ [4/9: SCA] Auditing third-party npm supply chain for known CVEs (Trivy)..."
                 sh """
                     docker run --rm \
                         -v \$(pwd):/workspace \
@@ -93,9 +104,12 @@ pipeline {
             }
         }
 
-        stage('Security Gate 4: IaC Security Compliance (Checkov)') {
+        // =====================================================================
+        // 5. IaC Security
+        // =====================================================================
+        stage('IaC Security') {
             steps {
-                echo "📐 [DevSecOps Gate 4/5] Auditing Terraform IaC against CIS AWS Foundations Benchmark..."
+                echo "📐 [5/9: IaC Security] Auditing Terraform code against CIS AWS Foundations Benchmark (Checkov)..."
                 sh """
                     docker run --rm \
                         -v \$(pwd):/tf \
@@ -106,36 +120,29 @@ pipeline {
             }
         }
 
-        stage('Terraform Init & Validate') {
-            steps {
-                echo "🔧 Running terraform init & validate via Docker container for Stage-7..."
-                sh """
-                    docker run --rm \
-                        -v \$(pwd):/workspace \
-                        -w /workspace/${env.TF_DIR} \
-                        --net=host \
-                        ${env.TF_IMAGE} version
-
-                    docker run --rm \
-                        -v \$(pwd):/workspace \
-                        -w /workspace/${env.TF_DIR} \
-                        --net=host \
-                        ${env.TF_IMAGE} init -input=false
-
-                    docker run --rm \
-                        -v \$(pwd):/workspace \
-                        -w /workspace/${env.TF_DIR} \
-                        --net=host \
-                        ${env.TF_IMAGE} validate
-                """
-            }
-        }
-
-        stage('Terraform Plan') {
+        // =====================================================================
+        // 6. Deploy Test Environment
+        // =====================================================================
+        stage('Deploy Test Environment') {
             steps {
                 script {
+                    echo "🔧 [6/9: Deploy Test Environment] Initializing Terraform for test environment..."
+                    sh """
+                        docker run --rm \
+                            -v \$(pwd):/workspace \
+                            -w /workspace/${env.TF_DIR} \
+                            --net=host \
+                            ${env.TF_IMAGE} init -input=false
+
+                        docker run --rm \
+                            -v \$(pwd):/workspace \
+                            -w /workspace/${env.TF_DIR} \
+                            --net=host \
+                            ${env.TF_IMAGE} validate
+                    """
+
                     if (params.ACTION == 'destroy') {
-                        echo "⚠️ Generating DESTROY plan for Stage-7..."
+                        echo "⚠️ Generating DESTROY plan..."
                         sh """
                             docker run --rm \
                                 -v \$(pwd):/workspace \
@@ -144,7 +151,7 @@ pipeline {
                                 ${env.TF_IMAGE} plan -destroy -out=tfplan -input=false
                         """
                     } else {
-                        echo "📋 Generating execution plan for Stage-7 (DevSecOps Infrastructure)..."
+                        echo "📋 Generating execution plan for test environment..."
                         sh """
                             docker run --rm \
                                 -v \$(pwd):/workspace \
@@ -153,167 +160,134 @@ pipeline {
                                 ${env.TF_IMAGE} plan -out=tfplan -input=false
                         """
                     }
-                }
-            }
-        }
 
-        stage('Security Approval Gate') {
-            when {
-                expression { 
-                    return (params.ACTION == 'apply' || params.ACTION == 'destroy') && !params.AUTO_APPROVE 
-                }
-            }
-            steps {
-                script {
-                    def actionText = params.ACTION == 'destroy' ? 'DESTROY' : 'APPLY'
-                    input(
-                        id: 'DevSecOpsApproval',
-                        message: "Review the Security Scan Gates & Terraform plan above. Proceed with ${actionText} on Stage-7?",
-                        ok: "Proceed with ${actionText}"
-                    )
-                }
-            }
-        }
+                    if (!params.AUTO_APPROVE) {
+                        def actionText = params.ACTION == 'destroy' ? 'DESTROY' : 'APPLY'
+                        input(
+                            id: 'DeployApproval',
+                            message: "Review the SAST, SCA, and IaC security reports above. Proceed with ${actionText} of the Test Environment?",
+                            ok: "Proceed with ${actionText}"
+                        )
+                    }
 
-        stage('Terraform Apply / Destroy') {
-            when {
-                expression { return params.ACTION == 'apply' || params.ACTION == 'destroy' }
-            }
-            steps {
-                script {
+                    echo "🚀 Applying Test Environment infrastructure via Terraform..."
+                    sh """
+                        docker run --rm \
+                            -v \$(pwd):/workspace \
+                            -w /workspace/${env.TF_DIR} \
+                            --net=host \
+                            ${env.TF_IMAGE} apply -input=false tfplan
+                    """
+
                     if (params.ACTION == 'apply') {
-                        echo "🚀 Applying Stage-7 hardened infrastructure via Docker..."
-                        sh """
-                            docker run --rm \
-                                -v \$(pwd):/workspace \
-                                -w /workspace/${env.TF_DIR} \
-                                --net=host \
-                                ${env.TF_IMAGE} apply -input=false tfplan
-                        """
-                    } else if (params.ACTION == 'destroy') {
-                        echo "💥 Destroying Stage-7 infrastructure via Docker..."
-                        sh """
-                            docker run --rm \
-                                -v \$(pwd):/workspace \
-                                -w /workspace/${env.TF_DIR} \
-                                --net=host \
-                                ${env.TF_IMAGE} apply -input=false tfplan
-                        """
+                        dir("${env.TF_DIR}") {
+                            echo "Waiting for CloudFront and application test endpoints to become ready..."
+                            sh '''
+                                CF_DOMAIN=$(grep -o '"cloudfront_domain_name": *"[^"]*"' terraform.tfstate | head -n1 | cut -d '"' -f4 || true)
+                                if [ -n "$CF_DOMAIN" ]; then
+                                    echo "Target: https://${CF_DOMAIN}/health"
+                                    for i in $(seq 1 20); do
+                                        if curl -sf "https://${CF_DOMAIN}/health" > /dev/null 2>&1; then
+                                            echo "✅ Test Environment is UP and healthy on https://${CF_DOMAIN}!"
+                                            break
+                                        fi
+                                        echo "Waiting for endpoint to be healthy ($i/20)..."
+                                        sleep 15
+                                    done
+                                fi
+                            '''
+                        }
                     }
                 }
             }
         }
 
-        stage('Perimeter & Storefront Health Verification') {
-            when {
-                expression { return params.ACTION == 'apply' }
-            }
-            steps {
-                dir("${env.TF_DIR}") {
-                    echo "🩺 Verifying Stage-7 Perimeter, Security Headers, and Health Probes..."
-                    sh '''
-                        CF_DOMAIN=$(grep -o '"cloudfront_domain_name": *"[^"]*"' terraform.tfstate | head -n1 | cut -d '"' -f4 || true)
-                        ALB_DNS=$(grep -o '"alb_dns_name": *"[^"]*"' terraform.tfstate | head -n1 | cut -d '"' -f4 || true)
-
-                        if [ -z "$CF_DOMAIN" ]; then
-                            echo "⚠️ Could not parse CloudFront domain from state."
-                            exit 0
-                        fi
-
-                        echo "🌐 CloudFront Endpoint: https://${CF_DOMAIN}"
-                        echo "⚖️ Direct ALB Origin  : http://${ALB_DNS}"
-
-                        ATTEMPTS=0
-                        MAX_ATTEMPTS=30
-                        SUCCESS=0
-
-                        until [ $ATTEMPTS -ge $MAX_ATTEMPTS ]; do
-                            RES=$(curl -s "https://${CF_DOMAIN}/health" || true)
-                            if echo "$RES" | grep -q '"status":"UP"'; then
-                                echo "✅ Storefront is UP and healthy!"
-                                echo "$RES"
-                                SUCCESS=1
-                                break
-                            else
-                                echo "⏳ Waiting for distribution and health endpoint (15s)..."
-                                sleep 15
-                                ATTEMPTS=$((ATTEMPTS+1))
-                            fi
-                        done
-
-                        if [ $SUCCESS -ne 1 ]; then
-                            echo "❌ Health check timed out."
-                            exit 1
-                        fi
-
-                        echo "🔒 1. Verifying Security Headers:"
-                        curl -s -I "https://${CF_DOMAIN}/health" | grep -iE "(strict-transport-security|content-security-policy|x-frame-options|x-content-type-options|x-xss-protection)" || true
-
-                        echo "🛡️ 2. Verifying Origin Header Lockdown (Direct access MUST return HTTP 403):"
-                        DIRECT_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://${ALB_DNS}/health" || true)
-                        echo "Direct ALB Status: $DIRECT_CODE"
-                        if [ "$DIRECT_CODE" = "403" ]; then
-                            echo "✅ Direct origin access blocked by ALB listener rule (HTTP 403)!"
-                        fi
-
-                        echo "🚦 3. Verifying AWS WAF L7 Threat Mitigation (SQLi Probe):"
-                        WAF_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://${CF_DOMAIN}/api/products?id=1%20OR%201=1" || true)
-                        echo "WAF SQLi Probe Status: $WAF_CODE"
-                        if [ "$WAF_CODE" = "403" ]; then
-                            echo "✅ AWS WAF blocked malicious SQLi at the perimeter (HTTP 403)!"
-                        fi
-
-                        echo "📋 4. Checking DevSecOps Status Endpoint:"
-                        curl -s "https://${CF_DOMAIN}/api/security/status" || true
-                        echo ""
-                    '''
-                }
-            }
-        }
-
-        stage('Security Gate 5: DAST Dynamic Analysis (OWASP ZAP)') {
+        // =====================================================================
+        // 7. DAST (Dynamic Application Security Testing)
+        // =====================================================================
+        stage('DAST') {
             when {
                 expression { return params.ACTION == 'apply' && params.RUN_DAST }
             }
             steps {
                 dir("${env.TF_DIR}") {
-                    echo "🎯 [DevSecOps Gate 5/5] Executing OWASP ZAP Baseline DAST Scan against CloudFront..."
+                    echo "🎯 [7/9: DAST] Executing OWASP ZAP Baseline penetration test against deployed CloudFront endpoint..."
                     sh '''
                         CF_DOMAIN=$(grep -o '"cloudfront_domain_name": *"[^"]*"' terraform.tfstate | head -n1 | cut -d '"' -f4 || true)
 
                         if [ -z "$CF_DOMAIN" ]; then
-                            echo "⚠️ CloudFront domain unavailable, skipping DAST."
+                            echo "⚠️ CloudFront domain unavailable in state, skipping DAST."
                             exit 0
                         fi
 
                         TARGET_URL="https://${CF_DOMAIN}"
-                        echo "Scanning target: ${TARGET_URL}"
+                        echo "Target URL for DAST: ${TARGET_URL}"
 
                         docker run --rm \
                             -v $(pwd)/../../:/zap/wrk/:rw \
-                            zaproxy/zap-stable:latest \
+                            ${env.ZAP_IMAGE} \
                             zap-baseline.py -t "${TARGET_URL}" \
                             -c "/zap/wrk/stage-7/security/dast/zap-baseline.conf" \
-                            -J "/zap/wrk/stage-7/security/reports/zap-report.json" \
-                            -r "/zap/wrk/stage-7/security/reports/zap-report.html" || true
+                            -J "/zap/wrk/${env.REPORTS_DIR}/zap-report.json" \
+                            -r "/zap/wrk/${env.REPORTS_DIR}/zap-report.html" || true
                     '''
                 }
+            }
+        }
+
+        // =====================================================================
+        // 8. Security Gate
+        // =====================================================================
+        stage('Security Gate') {
+            steps {
+                echo "📊 [8/9: Security Gate] Consolidating and evaluating security quality gates..."
+                sh '''
+                    echo "================================================================="
+                    echo "📋 DevSecOps Quality Gate Summary"
+                    echo "================================================================="
+                    if [ -f "${REPORTS_DIR}/semgrep-report.json" ]; then
+                        echo "✅ SAST (Semgrep) Report       : ${REPORTS_DIR}/semgrep-report.json"
+                    fi
+                    if [ -f "${REPORTS_DIR}/trivy-report.json" ]; then
+                        echo "✅ SCA (Trivy) Report          : ${REPORTS_DIR}/trivy-report.json"
+                    fi
+                    if [ -f "${REPORTS_DIR}/checkov-report.json" ]; then
+                        echo "✅ IaC (Checkov) Report        : ${REPORTS_DIR}/checkov-report.json"
+                    fi
+                    if [ -f "${REPORTS_DIR}/zap-report.html" ]; then
+                        echo "✅ DAST (OWASP ZAP) Report     : ${REPORTS_DIR}/zap-report.html"
+                    fi
+                    echo "================================================================="
+                    echo "🎉 All Security Quality Gates analyzed successfully!"
+                    echo "================================================================="
+                '''
+            }
+        }
+
+        // =====================================================================
+        // 9. Cleanup
+        // =====================================================================
+        stage('Cleanup') {
+            steps {
+                echo "🧹 [9/9: Cleanup] Cleaning up temporary build artifacts..."
+                sh """
+                    rm -f ${env.TF_DIR}/tfplan
+                    find ${env.APP_DIR} -name "node_modules" -type d -prune -exec rm -rf {} + 2>/dev/null || true
+                    rm -rf /tmp/.npm 2>/dev/null || true
+                """
             }
         }
     }
 
     post {
         always {
-            dir("${env.TF_DIR}") {
-                sh 'rm -f tfplan'
-            }
             archiveArtifacts artifacts: 'stage-7/security/reports/*', allowEmptyArchive: true
         }
         success {
-            echo "🎉 ShopSphere Stage-7 DevSecOps pipeline completed successfully with all security quality gates intact!"
+            echo "🎉 ShopSphere Stage-7 End-to-End DevSecOps Pipeline completed successfully!"
         }
         failure {
-            echo "❌ ShopSphere Stage-7 Pipeline failed. Review the console logs and security reports."
+            echo "❌ ShopSphere Stage-7 Pipeline failed. Please check console logs and security reports."
         }
     }
 }

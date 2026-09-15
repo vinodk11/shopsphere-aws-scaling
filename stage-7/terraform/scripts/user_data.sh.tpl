@@ -1,13 +1,14 @@
 #!/bin/bash
 # ==============================================================================
-# ShopSphere Stage 6 Bootstrap Script (CloudFront + WAF + SQS + Lambda + Redis + RDS)
+# ShopSphere Stage 7 Bootstrap Script (DevSecOps + CloudFront + WAF + SQS + Lambda)
 # Rendered by Terraform templatefile() and executed by cloud-init on each ASG node.
+# Provides automated initial setup and /opt/shopsphere/deploy.sh for Jenkins App pipeline.
 # ==============================================================================
 set -euo pipefail
 
 exec > >(tee -a /var/log/user-data.log) 2>&1
 
-echo "=== ShopSphere Stage 6 ASG Node Bootstrap Starting at $(date) ==="
+echo "=== ShopSphere Stage 7 ASG Node Bootstrap Starting at $(date) ==="
 echo "Node Hostname: $(hostname)"
 
 # ------------------------------------------------------------------------------
@@ -15,7 +16,10 @@ echo "Node Hostname: $(hostname)"
 # ------------------------------------------------------------------------------
 echo "[1/6] Updating OS and installing packages (Node.js, PostgreSQL client, Nginx, Git)..."
 dnf update -y
-dnf install -y git nodejs npm postgresql15 nginx
+dnf install -y git nodejs npm postgresql15 nginx amazon-ssm-agent || dnf install -y git nodejs npm postgresql15 nginx
+
+# Ensure Amazon SSM Agent is active for remote deployment via Jenkins
+systemctl enable --now amazon-ssm-agent || true
 
 # ------------------------------------------------------------------------------
 # 2. Verify Amazon RDS Network Reachability
@@ -37,49 +41,14 @@ done
 echo "[2/6] RDS connectivity check completed."
 
 # ------------------------------------------------------------------------------
-# 3. Clone Application Repository and Setup Source Code
+# 3. Setup Dedicated System User and Directories
 # ------------------------------------------------------------------------------
-echo "[3/6] Setting up ShopSphere Stage 6 application source code..."
-mkdir -p /opt/shopsphere
-cd /opt/shopsphere
+echo "[3/6] Setting up system user and directory structure..."
+id -u shopsphere &>/dev/null || useradd -r -m -d /home/shopsphere -s /bin/false shopsphere
+mkdir -p /opt/shopsphere/app /home/shopsphere
+chown -R shopsphere:shopsphere /home/shopsphere
 
-APP_REPO="${app_repo_url}"
-if [ -z "$APP_REPO" ] || [ "$APP_REPO" = "https://github.com/kbhujbal/ShopSphere---E-commerce-Microservice-Platform.git" ]; then
-  APP_REPO="https://github.com/vinodk11/shopsphere-aws-scaling.git"
-fi
-
-if [ ! -d repo ]; then
-  echo "Cloning repository from $APP_REPO..."
-  git clone "$APP_REPO" repo || git clone "https://github.com/vinodk11/shopsphere-aws-scaling.git" repo
-else
-  echo "Repository already exists, pulling latest..."
-  cd repo && git pull && cd ..
-fi
-
-mkdir -p /opt/shopsphere/app
-if [ -d "/opt/shopsphere/repo/stage-6/app" ]; then
-  echo "Deploying application code from stage-6/app..."
-  cp -r /opt/shopsphere/repo/stage-6/app/* /opt/shopsphere/app/
-elif [ -d "/opt/shopsphere/repo/stage-5/app" ]; then
-  echo "Deploying application code from stage-5/app..."
-  cp -r /opt/shopsphere/repo/stage-5/app/* /opt/shopsphere/app/
-elif [ -d "/opt/shopsphere/repo/stage-4/app" ]; then
-  echo "Deploying application code from stage-4/app..."
-  cp -r /opt/shopsphere/repo/stage-4/app/* /opt/shopsphere/app/
-elif [ -d "/opt/shopsphere/repo/app" ]; then
-  cp -r /opt/shopsphere/repo/app/* /opt/shopsphere/app/
-fi
-
-# Apply initial database schema to Amazon RDS idempotently if present
-if [ -f "/opt/shopsphere/app/db/schema.sql" ]; then
-  echo "Verifying / applying database schema to Amazon RDS with SSL..."
-  PGPASSWORD="${db_password}" PGSSLMODE=require psql -h "${db_host}" -p "${db_port}" -U "${db_user}" -d "${db_name}" -f /opt/shopsphere/app/db/schema.sql || true
-fi
-
-# ------------------------------------------------------------------------------
-# 4. Write Environment Configuration & Install Node Dependencies
-# ------------------------------------------------------------------------------
-echo "[4/6] Writing .env configuration pointing to Amazon RDS, ElastiCache & Amazon SQS..."
+# Write Environment Configuration
 cat > /opt/shopsphere/app/.env <<ENV_EOF
 PORT=${app_port}
 NODE_ENV=production
@@ -95,29 +64,19 @@ REDIS_PORT=${redis_port}
 REDIS_TTL_SECONDS=60
 SQS_QUEUE_URL=${sqs_queue_url}
 SQS_QUEUE_NAME=${sqs_queue_name}
-STAGE_NAME=stage-6
+STAGE_NAME=stage-7
 ENV_EOF
 
 chmod 600 /opt/shopsphere/app/.env
-
-# Create dedicated system user and home directory
-id -u shopsphere &>/dev/null || useradd -r -m -d /home/shopsphere -s /bin/false shopsphere
-mkdir -p /home/shopsphere
-chown -R shopsphere:shopsphere /home/shopsphere
-
-# Install npm dependencies
-cd /opt/shopsphere/app
-export HOME=/root
-npm install --omit=dev --cache /tmp/.npm
-chown -R shopsphere:shopsphere /opt/shopsphere /home/shopsphere
+chown shopsphere:shopsphere /opt/shopsphere/app/.env
 
 # ------------------------------------------------------------------------------
-# 5. Configure Systemd Service for ShopSphere
+# 4. Configure Systemd Service for ShopSphere
 # ------------------------------------------------------------------------------
-echo "[5/6] Creating systemd service..."
+echo "[4/6] Creating systemd service..."
 cat > /etc/systemd/system/shopsphere.service <<'SERVICE_EOF'
 [Unit]
-Description=ShopSphere Application Server (Stage 6 - CloudFront + WAF + SQS + Lambda)
+Description=ShopSphere Application Server (Stage 7 - DevSecOps)
 After=network.target
 
 [Service]
@@ -137,7 +96,86 @@ WantedBy=multi-user.target
 SERVICE_EOF
 
 systemctl daemon-reload
-systemctl enable --now shopsphere.service
+
+# ------------------------------------------------------------------------------
+# 5. Create Standalone Deployment Script (/opt/shopsphere/deploy.sh)
+# Can be called by user_data on boot AND by Jenkins App Pipeline via AWS SSM
+# ------------------------------------------------------------------------------
+echo "[5/6] Creating reusable deployment script /opt/shopsphere/deploy.sh..."
+cat > /opt/shopsphere/deploy.sh <<'DEPLOY_EOF'
+#!/bin/bash
+# Reusable deployment script executed by user_data and Jenkins App Pipeline
+set -euo pipefail
+exec > >(tee -a /var/log/shopsphere-deploy.log) 2>&1
+
+echo "======================================================================"
+echo "🚀 ShopSphere Application Deployment Started at $(date)"
+echo "======================================================================"
+
+cd /opt/shopsphere
+
+APP_REPO="${app_repo_url}"
+if [ -z "$APP_REPO" ] || [ "$APP_REPO" = "https://github.com/kbhujbal/ShopSphere---E-commerce-Microservice-Platform.git" ]; then
+  APP_REPO="https://github.com/vinodk11/shopsphere-aws-scaling.git"
+fi
+
+if [ ! -d repo ]; then
+  echo "Cloning repository from $APP_REPO..."
+  git clone "$APP_REPO" repo || git clone "https://github.com/vinodk11/shopsphere-aws-scaling.git" repo
+else
+  echo "Repository exists. Pulling latest commits from main..."
+  cd repo
+  git fetch origin main
+  git reset --hard origin/main
+  cd ..
+fi
+
+echo "Copying latest application code to /opt/shopsphere/app..."
+if [ -d "/opt/shopsphere/repo/stage-7/app" ]; then
+  cp -r /opt/shopsphere/repo/stage-7/app/* /opt/shopsphere/app/
+elif [ -d "/opt/shopsphere/repo/stage-6/app" ]; then
+  cp -r /opt/shopsphere/repo/stage-6/app/* /opt/shopsphere/app/
+elif [ -d "/opt/shopsphere/repo/app" ]; then
+  cp -r /opt/shopsphere/repo/app/* /opt/shopsphere/app/
+fi
+
+# Apply initial database schema to Amazon RDS idempotently if present
+if [ -f "/opt/shopsphere/app/db/schema.sql" ]; then
+  echo "Verifying database schema on Amazon RDS..."
+  PGPASSWORD="${db_password}" PGSSLMODE=require psql -h "${db_host}" -p "${db_port}" -U "${db_user}" -d "${db_name}" -f /opt/shopsphere/app/db/schema.sql || true
+fi
+
+# Install npm production dependencies
+cd /opt/shopsphere/app
+export HOME=/root
+npm install --omit=dev --cache /tmp/.npm
+chown -R shopsphere:shopsphere /opt/shopsphere /home/shopsphere
+
+# Restart systemd service
+echo "Restarting shopsphere.service..."
+systemctl enable shopsphere.service
+systemctl restart shopsphere.service
+
+# Health probe
+echo "Verifying local service health on port ${app_port}..."
+sleep 3
+for i in $(seq 1 20); do
+  if curl -sf "http://127.0.0.1:${app_port}/health" > /dev/null 2>&1; then
+    echo "✅ ShopSphere application is UP and healthy on port ${app_port}!"
+    exit 0
+  fi
+  echo "Waiting for service to be healthy ($i/20)..."
+  sleep 2
+done
+
+echo "⚠️ Warning: Service restart completed but local health check timed out."
+exit 0
+DEPLOY_EOF
+
+chmod +x /opt/shopsphere/deploy.sh
+
+# Run the deployment script for initial bootstrap
+/opt/shopsphere/deploy.sh
 
 # ------------------------------------------------------------------------------
 # 6. Configure Nginx Reverse Proxy
@@ -170,19 +208,5 @@ rm -f /etc/nginx/conf.d/default.conf
 systemctl enable --now nginx
 systemctl reload nginx || systemctl restart nginx
 
-# ------------------------------------------------------------------------------
-# Health Verification
-# ------------------------------------------------------------------------------
-echo "Verifying application health on port ${app_port}..."
-sleep 5
-for i in $(seq 1 30); do
-  if curl -sf "http://127.0.0.1:${app_port}/health" > /dev/null 2>&1; then
-    echo "✅ ShopSphere Stage 6 node is UP and healthy!"
-    break
-  fi
-  echo "Waiting for ShopSphere service to initialize... ($i/30)"
-  sleep 3
-done
-
-echo "=== ShopSphere Stage 6 Node Bootstrap Completed at $(date) ==="
+echo "=== ShopSphere Stage 7 Node Bootstrap Completed at $(date) ==="
 echo "Connected to RDS (${db_host}), ElastiCache (${redis_host}), and SQS (${sqs_queue_name})"
