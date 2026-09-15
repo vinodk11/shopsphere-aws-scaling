@@ -109,12 +109,12 @@ run_sca() {
     local status=0
     if command -v docker >/dev/null 2>&1; then
         docker run --rm -v "${ROOT_DIR}:/workspace" aquasec/trivy:latest \
-            fs --config /workspace/stage-7/security/sca/trivy.yaml \
+            fs --scanners vuln --config /workspace/stage-7/security/sca/trivy.yaml \
             --severity HIGH,CRITICAL \
             --format json -o /workspace/stage-7/security/reports/trivy-report.json \
             /workspace/stage-7/app || status=$?
     elif command -v trivy >/dev/null 2>&1; then
-        trivy fs --config "${STAGE_DIR}/security/sca/trivy.yaml" \
+        trivy fs --scanners vuln --config "${STAGE_DIR}/security/sca/trivy.yaml" \
             --severity HIGH,CRITICAL \
             --format json -o "${REPORTS_DIR}/trivy-report.json" \
             "${STAGE_DIR}/app" || status=$?

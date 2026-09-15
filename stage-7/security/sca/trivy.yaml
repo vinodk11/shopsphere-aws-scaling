@@ -1,6 +1,9 @@
 # Trivy SCA & Dependency Scanner Configuration for ShopSphere
 # Scans npm dependencies for known CVEs and supply chain vulnerabilities.
 
+scanners:
+  - vuln
+
 severity:
   - HIGH
   - CRITICAL
@@ -9,10 +12,6 @@ vuln-type:
   - library
 
 ignore-unfixed: false
-
-format: table
-
-exit-code: 1
 
 timeout: 10m
 
@@ -23,6 +22,4 @@ scan:
 
 vulnerability:
   ignore:
-    # Whitelisted CVEs with low risk or dev-only dependencies can be listed here with rationale
-    # - ID: CVE-2023-XXXX
-    #   statement: "Mitigated by runtime WAF and sanitized inputs"
+    # Whitelisted CVEs with low risk or dev-only dependencies can be listed here

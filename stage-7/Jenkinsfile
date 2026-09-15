@@ -2,7 +2,7 @@
 // ShopSphere Stage 7 - Enterprise DevSecOps & Golden AMI Pipeline
 // =============================================================================
 // Architecture Flow:
-//   GitHub -> Jenkins -> Checkout + Security (Gitleaks, Semgrep, SCA) in parallel
+//   GitHub -> Jenkins -> Checkout -> Security (Gitleaks, Semgrep, SCA) in parallel
 //   -> Unit Tests -> Build Application -> Package App -> Infrastructure (Terraform)
 //   -> Create AMI -> Trivy / AMI validation -> Update Launch Template
 //   -> ASG Instance Refresh -> ALB Health -> DAST -> Security Gate
@@ -52,20 +52,24 @@ pipeline {
     stages {
 
         // =====================================================================
-        // 1. Checkout & Parallel Security Analysis (Gitleaks, Semgrep, SCA)
+        // 1. Checkout
         // =====================================================================
-        stage('Checkout & Security Analysis') {
+        stage('Checkout') {
+            steps {
+                echo "🚀 [1: Checkout] Checking out repository source code..."
+                git branch: 'main', url: 'https://github.com/vinodk11/shopsphere-aws-scaling.git'
+                sh "mkdir -p ${env.REPORTS_DIR} build-dist"
+            }
+        }
+
+        // =====================================================================
+        // 2. Parallel Security Analysis (Gitleaks, Semgrep, Trivy SCA)
+        // =====================================================================
+        stage('Security Analysis') {
             parallel {
-                stage('Checkout') {
-                    steps {
-                        echo "🚀 [1a: Checkout] Checking out repository source code..."
-                        git branch: 'main', url: 'https://github.com/vinodk11/shopsphere-aws-scaling.git'
-                        sh "mkdir -p ${env.REPORTS_DIR} build-dist"
-                    }
-                }
                 stage('Gitleaks (Secrets Detection)') {
                     steps {
-                        echo "🔑 [1b: Gitleaks] Scanning repository for leaked credentials & API keys..."
+                        echo "🔑 [2a: Gitleaks] Scanning repository for leaked credentials & API keys..."
                         sh """
                             docker run --rm \
                                 -v \$(pwd):/path \
@@ -79,7 +83,7 @@ pipeline {
                 }
                 stage('Semgrep (SAST)') {
                     steps {
-                        echo "🔍 [1c: Semgrep SAST] Scanning code for OWASP Top 10 vulnerabilities..."
+                        echo "🔍 [2b: Semgrep SAST] Scanning code for OWASP Top 10 vulnerabilities..."
                         sh """
                             docker run --rm \
                                 -v \$(pwd):/src \
@@ -94,11 +98,12 @@ pipeline {
                 }
                 stage('Trivy (SCA)') {
                     steps {
-                        echo "🛡️ [1d: Trivy SCA] Auditing npm dependency supply chain for known CVEs..."
+                        echo "🛡️ [2c: Trivy SCA] Auditing npm dependency supply chain for known CVEs..."
                         sh """
                             docker run --rm \
                                 -v \$(pwd):/workspace \
                                 ${env.TRIVY_IMAGE} fs \
+                                --scanners vuln \
                                 --config /workspace/stage-7/security/sca/trivy.yaml \
                                 --severity HIGH,CRITICAL \
                                 --format json -o /workspace/${env.REPORTS_DIR}/trivy-report.json \
@@ -110,11 +115,11 @@ pipeline {
         }
 
         // =====================================================================
-        // 2. Unit Tests
+        // 3. Unit Tests
         // =====================================================================
         stage('Unit Tests') {
             steps {
-                echo "🧪 [2: Unit Tests] Executing Node.js unit tests in container..."
+                echo "🧪 [3: Unit Tests] Executing Node.js unit tests in container..."
                 sh """
                     docker run --rm \
                         -v \$(pwd):/app \
@@ -126,11 +131,11 @@ pipeline {
         }
 
         // =====================================================================
-        // 3. Build Application
+        // 4. Build Application
         // =====================================================================
         stage('Build Application') {
             steps {
-                echo "⚙️ [3: Build Application] Installing production dependencies & compiling application..."
+                echo "⚙️ [4: Build Application] Installing production dependencies & compiling application..."
                 sh """
                     docker run --rm \
                         -v \$(pwd):/app \
@@ -142,11 +147,11 @@ pipeline {
         }
 
         // =====================================================================
-        // 4. Package App
+        // 5. Package App
         // =====================================================================
         stage('Package App') {
             steps {
-                echo "📦 [4: Package App] Packaging application release archive..."
+                echo "📦 [5: Package App] Packaging application release archive..."
                 sh """
                     mkdir -p build-dist
                     tar --exclude='node_modules/.cache' \
@@ -160,7 +165,7 @@ pipeline {
         }
 
         // =====================================================================
-        // 5. Infrastructure Provisioning (Terraform & IaC Security)
+        // 6. Infrastructure Provisioning (Terraform & IaC Security)
         // =====================================================================
         stage('Infrastructure Provisioning') {
             when {
@@ -234,7 +239,7 @@ pipeline {
         }
 
         // =====================================================================
-        // 6. Create AMI
+        // 7. Create AMI
         // =====================================================================
         stage('Create AMI') {
             when {
@@ -242,7 +247,7 @@ pipeline {
             }
             steps {
                 script {
-                    echo "📀 [6: Create AMI] Registering Golden AMI / Baked image metadata..."
+                    echo "📀 [7: Create AMI] Registering Golden AMI / Baked image metadata..."
                     dir("${env.TF_DIR}") {
                         sh '''
                             DATE_TAG=$(date +%Y%m%d%H%M%S)
@@ -277,18 +282,19 @@ pipeline {
         }
 
         // =====================================================================
-        // 7. Trivy / AMI validation
+        // 8. Trivy / AMI validation
         // =====================================================================
         stage('Trivy / AMI validation') {
             when {
                 expression { return params.ACTION == 'apply' || params.ACTION == 'app-refresh' }
             }
             steps {
-                echo "🛡️ [7: Trivy / AMI validation] Scanning application package & image filesystem for vulnerabilities..."
+                echo "🛡️ [8: Trivy / AMI validation] Scanning application package & image filesystem for vulnerabilities..."
                 sh """
                     docker run --rm \
                         -v \$(pwd):/workspace \
                         ${env.TRIVY_IMAGE} fs \
+                        --scanners vuln \
                         --severity HIGH,CRITICAL \
                         --format json -o /workspace/${env.REPORTS_DIR}/trivy-ami-report.json \
                         /workspace/build-dist || true
@@ -297,7 +303,7 @@ pipeline {
         }
 
         // =====================================================================
-        // 8. Update Launch Template
+        // 9. Update Launch Template
         // =====================================================================
         stage('Update Launch Template') {
             when {
@@ -305,7 +311,7 @@ pipeline {
             }
             steps {
                 script {
-                    echo "📋 [8: Update Launch Template] Registering new Launch Template version..."
+                    echo "📋 [9: Update Launch Template] Registering new Launch Template version..."
                     dir("${env.TF_DIR}") {
                         sh '''
                             LT_ID=$(grep -o '"launch_template_id": *"[^"]*"' terraform.tfstate 2>/dev/null | head -n1 | cut -d '"' -f4 || true)
@@ -327,7 +333,7 @@ pipeline {
         }
 
         // =====================================================================
-        // 9. ASG Instance Refresh
+        // 10. ASG Instance Refresh
         // =====================================================================
         stage('ASG Instance Refresh') {
             when {
@@ -335,7 +341,7 @@ pipeline {
             }
             steps {
                 script {
-                    echo "🔄 [9: ASG Instance Refresh] Starting rolling zero-downtime instance replacement..."
+                    echo "🔄 [10: ASG Instance Refresh] Starting rolling zero-downtime instance replacement..."
                     dir("${env.TF_DIR}") {
                         sh '''
                             ASG_NAME=$(grep -o '"autoscaling_group_name": *"[^"]*"' terraform.tfstate 2>/dev/null | head -n1 | cut -d '"' -f4 || true)
@@ -358,7 +364,7 @@ pipeline {
         }
 
         // =====================================================================
-        // 10. ALB Health
+        // 11. ALB Health
         // =====================================================================
         stage('ALB Health') {
             when {
@@ -366,7 +372,7 @@ pipeline {
             }
             steps {
                 dir("${env.TF_DIR}") {
-                    echo "🩺 [10: ALB Health] Validating ALB Target Group and CloudFront health status..."
+                    echo "🩺 [11: ALB Health] Validating ALB Target Group and CloudFront health status..."
                     sh '''
                         CF_DOMAIN=$(grep -o '"cloudfront_domain_name": *"[^"]*"' terraform.tfstate 2>/dev/null | head -n1 | cut -d '"' -f4 || true)
                         ALB_DNS=$(grep -o '"alb_dns_name": *"[^"]*"' terraform.tfstate 2>/dev/null | head -n1 | cut -d '"' -f4 || true)
@@ -391,7 +397,7 @@ pipeline {
         }
 
         // =====================================================================
-        // 11. DAST (Dynamic Application Security Testing)
+        // 12. DAST (Dynamic Application Security Testing)
         // =====================================================================
         stage('DAST') {
             when {
@@ -399,7 +405,7 @@ pipeline {
             }
             steps {
                 dir("${env.TF_DIR}") {
-                    echo "🎯 [11: DAST] Executing OWASP ZAP Baseline penetration scan against deployed endpoint..."
+                    echo "🎯 [12: DAST] Executing OWASP ZAP Baseline penetration scan against deployed endpoint..."
                     sh '''
                         CF_DOMAIN=$(grep -o '"cloudfront_domain_name": *"[^"]*"' terraform.tfstate 2>/dev/null | head -n1 | cut -d '"' -f4 || true)
 
@@ -409,7 +415,7 @@ pipeline {
                         fi
 
                         TARGET_URL="https://${CF_DOMAIN}"
-                        echo "Target URL for DAST: ${TARGET_URL}"
+                        echo "DAST Penetration Testing Target: ${TARGET_URL}"
 
                         docker run --rm \
                             -v $(pwd)/../../:/zap/wrk/:rw \
@@ -424,11 +430,11 @@ pipeline {
         }
 
         // =====================================================================
-        // 12. Security Gate
+        // 13. Security Gate
         // =====================================================================
         stage('Security Gate') {
             steps {
-                echo "📊 [12: Security Gate] Consolidating and evaluating all DevSecOps quality gates..."
+                echo "📊 [13: Security Gate] Consolidating and evaluating all DevSecOps quality gates..."
                 sh '''
                     echo "================================================================="
                     echo "📋 DevSecOps Quality Gate Summary"
