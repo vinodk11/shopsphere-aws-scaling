@@ -1,0 +1,7 @@
+# Hadolint Dockerfile Linter Configuration for ShopSphere Stage 8
+# Enforces Dockerfile security best practices and CIS Docker Benchmark.
+
+ignored:
+  - DL3018 # Pin versions in apk add (mitigated by apk upgrade in builder)
+
+failure-threshold: error

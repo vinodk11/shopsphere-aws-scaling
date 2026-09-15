@@ -1,0 +1,27 @@
+# Checkov Infrastructure as Code (IaC) Security Configuration
+# Evaluates Terraform templates against CIS AWS Benchmark & Security Best Practices.
+
+framework:
+  - terraform
+
+compact: true
+
+quiet: false
+
+soft-fail: false
+
+output:
+  - cli
+  - json
+
+output-file-path: stage-7/security/reports/checkov-report.json
+
+# Checkov rule skipping with architectural rationale
+skip-check:
+  # CKV_AWS_260: ALB ingress on port 80 (demo environment redirects / handles edge via CloudFront)
+  - CKV_AWS_260
+  # CKV_AWS_150: CloudFront Web ACL in dev without ACM custom domain
+  - CKV_AWS_150
+
+download-external-modules: false
+evaluate-variables: true

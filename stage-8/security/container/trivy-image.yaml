@@ -1,0 +1,20 @@
+# Trivy Container Image Scanner Configuration for ShopSphere Stage 8
+# Scans multi-stage Docker images for OS and application vulnerabilities.
+
+scanners:
+  - vuln
+
+severity:
+  - HIGH
+  - CRITICAL
+
+ignore-unfixed: false
+
+timeout: 10m
+
+image:
+  removed-pkgs: true
+
+vulnerability:
+  ignore:
+    # Whitelisted false positives or non-exploitable kernel packages can be listed here

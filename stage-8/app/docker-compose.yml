@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: shopsphere-app-stage8
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - NODE_ENV=development
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=shopspheredb
+      - DB_USER=shopsphere_user
+      - DB_PASSWORD=ShopSphere2026SecurePass!
+      - DB_SSL=false
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_TTL_SECONDS=60
+      - STAGE_NAME=stage-8
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - shopsphere-net
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: shopsphere-postgres-stage8
+    environment:
+      - POSTGRES_DB=shopspheredb
+      - POSTGRES_USER=shopsphere_user
+      - POSTGRES_PASSWORD=ShopSphere2026SecurePass!
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shopsphere_user -d shopspheredb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - shopsphere-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: shopsphere-redis-stage8
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - shopsphere-net
+
+networks:
+  shopsphere-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:

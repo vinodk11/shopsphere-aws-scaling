@@ -1,0 +1,20 @@
+# Trivy SCA & Dependency Scanner Configuration for ShopSphere
+# Scans npm dependencies for known CVEs and supply chain vulnerabilities.
+
+scanners:
+  - vuln
+
+severity:
+  - HIGH
+  - CRITICAL
+
+vuln-type:
+  - library
+
+ignore-unfixed: false
+
+timeout: 10m
+
+vulnerability:
+  ignore:
+    # Whitelisted CVEs with low risk or dev-only dependencies can be listed here

@@ -4,8 +4,8 @@ pipeline {
     parameters {
         choice(
             name: 'STAGE',
-            choices: ['stage-1', 'stage-2', 'stage-3', 'stage-4', 'stage-5', 'stage-6', 'stage-7'],
-            description: 'Select ShopSphere stage (stage-1 = Monolith, stage-2 = EC2 + RDS, stage-3 = ALB + ASG, stage-4 = Redis, stage-5 = SQS + Lambda, stage-6 = CloudFront + WAF, stage-7 = DevSecOps)'
+            choices: ['stage-1', 'stage-2', 'stage-3', 'stage-4', 'stage-5', 'stage-6', 'stage-7', 'stage-8'],
+            description: 'Select ShopSphere stage (stage-1 = Monolith, stage-2 = EC2 + RDS, stage-3 = ALB + ASG, stage-4 = Redis, stage-5 = SQS + Lambda, stage-6 = CloudFront + WAF, stage-7 = DevSecOps, stage-8 = Docker)'
         )
         choice(
             name: 'ACTION',
