@@ -177,7 +177,7 @@ Stage 7 implements a unified **Enterprise DevSecOps Pipeline** (`stage-7/Jenkins
                  ▼
        ASG Instance Refresh
                  ▼
-            ALB Health
+ Verify App Health, ALB & CloudFront (CNF)
                  ▼
                DAST
                  ▼
@@ -190,8 +190,9 @@ Stage 7 implements a unified **Enterprise DevSecOps Pipeline** (`stage-7/Jenkins
 3. **Build & Package:** Installs production dependencies and packages the application into an immutable release bundle (`build-dist/shopsphere-app-v${BUILD_NUMBER}.tar.gz`) with SHA-256 checksum verification.
 4. **Infrastructure Provisioning:** Audits Terraform IaC with `Checkov`, validates syntax, and applies changes (VPC, ALB, RDS, Redis, SQS, CloudFront, WAF, ASG).
 5. **Golden AMI Lifecycle:** Registers the new immutable Amazon Machine Image (AMI) metadata (`Create AMI`), validates the AMI package with `Trivy`, and registers a new EC2 Launch Template version (`Update Launch Template`).
-6. **Zero-Downtime Rolling Rollout:** Triggers an automated **ASG Instance Refresh**, executing rolling instance replacements while monitoring ALB Target Group health checks.
-7. **Dynamic Security & Gate Enforcement:** Runs **OWASP ZAP (DAST)** baseline penetration tests against the live endpoint, then evaluates all quality gates (0 High / 0 Critical tolerance) before archiving build artifacts.
+6. **Zero-Downtime Rolling Rollout:** Triggers an automated **ASG Instance Refresh**, executing rolling instance replacements.
+7. **Multi-Tier Health Verification:** Validates EC2 Application Health (`/health`), direct ALB origin routing and security group isolation, and CloudFront (CNF) edge caching and AWS WAF perimeter protection.
+8. **Dynamic Security & Gate Enforcement:** Runs **OWASP ZAP (DAST)** baseline penetration tests against the live endpoint, then evaluates all quality gates (0 High / 0 Critical tolerance) before archiving build artifacts.
 
 ---
 

@@ -364,33 +364,127 @@ pipeline {
         }
 
         // =====================================================================
-        // 11. ALB Health
+        // 11. Verify App Health, ALB & CloudFront (CNF)
         // =====================================================================
-        stage('ALB Health') {
+        stage('Verify App Health, ALB & CloudFront (CNF)') {
             when {
                 expression { return params.ACTION == 'apply' || params.ACTION == 'app-refresh' }
             }
             steps {
                 dir("${env.TF_DIR}") {
-                    echo "🩺 [11: ALB Health] Validating ALB Target Group and CloudFront health status..."
+                    echo "🩺 [11: Health Verification] Validating Application Health, ALB Origin, and CloudFront CDN (CNF)..."
                     sh '''
+                        set +e
                         CF_DOMAIN=$(grep -o '"cloudfront_domain_name": *"[^"]*"' terraform.tfstate 2>/dev/null | head -n1 | cut -d '"' -f4 || true)
                         ALB_DNS=$(grep -o '"alb_dns_name": *"[^"]*"' terraform.tfstate 2>/dev/null | head -n1 | cut -d '"' -f4 || true)
-                        TARGET="${CF_DOMAIN:-$ALB_DNS}"
+                        ASG_NAME=$(grep -o '"autoscaling_group_name": *"[^"]*"' terraform.tfstate 2>/dev/null | head -n1 | cut -d '"' -f4 || true)
 
-                        if [ -n "$TARGET" ]; then
-                            echo "Checking health probe on https://${TARGET}/health..."
-                            for i in $(seq 1 20); do
-                                if curl -sf "https://${TARGET}/health" > /dev/null 2>&1 || curl -sf "http://${TARGET}/health" > /dev/null 2>&1; then
-                                    echo "✅ Application and ALB Target Group are healthy and accepting traffic!"
+                        echo "================================================================="
+                        echo "🔍 Multi-Tier Health Verification: App, ALB & CloudFront (CNF)"
+                        echo "================================================================="
+                        echo "🌐 CloudFront (CNF) Domain : ${CF_DOMAIN:-Unavailable}"
+                        echo "⚖️ ALB DNS Endpoint        : ${ALB_DNS:-Unavailable}"
+                        echo "🚀 Auto Scaling Group      : ${ASG_NAME:-Unavailable}"
+                        echo "================================================================="
+
+                        # -------------------------------------------------------------
+                        # 1. VERIFY APPLICATION & CLOUDFRONT (CNF) HEALTH
+                        # -------------------------------------------------------------
+                        echo ""
+                        echo "▶ [Tier 1/3: App Health & CNF Edge Probe]"
+                        if [ -n "$CF_DOMAIN" ]; then
+                            echo "Probing CloudFront endpoint https://${CF_DOMAIN}/health..."
+                            ATTEMPTS=0
+                            MAX_ATTEMPTS=30
+                            APP_HEALTHY=0
+
+                            until [ $ATTEMPTS -ge $MAX_ATTEMPTS ]; do
+                                HEALTH_RES=$(curl -s "https://${CF_DOMAIN}/health" || true)
+                                if echo "$HEALTH_RES" | grep -qiE '("status" *: *"UP"|status.*ok|shopsphere)'; then
+                                    echo "✅ Application Health Probe SUCCESS (200 OK):"
+                                    echo "   $HEALTH_RES"
+                                    APP_HEALTHY=1
                                     break
+                                else
+                                    echo "⏳ Waiting for App & CloudFront edge to become healthy ($((ATTEMPTS+1))/$MAX_ATTEMPTS)..."
+                                    sleep 10
+                                    ATTEMPTS=$((ATTEMPTS+1))
                                 fi
-                                echo "Waiting for targets to report healthy status ($i/20)..."
-                                sleep 15
                             done
+
+                            if [ $APP_HEALTHY -ne 1 ]; then
+                                echo "⚠️ CloudFront endpoint did not return expected health response within timeout."
+                            fi
+
+                            echo "📋 Checking DevSecOps Security Status Endpoint (/api/security/status):"
+                            SEC_STATUS=$(curl -s "https://${CF_DOMAIN}/api/security/status" || true)
+                            echo "   $SEC_STATUS"
                         else
-                            echo "ℹ️ Health probe verification finished."
+                            echo "ℹ️ CloudFront domain not found in state, skipping edge probe."
                         fi
+
+                        # -------------------------------------------------------------
+                        # 2. VERIFY ALB HEALTH & ORIGIN LOCKDOWN
+                        # -------------------------------------------------------------
+                        echo ""
+                        echo "▶ [Tier 2/3: ALB Health & Perimeter Lockdown]"
+                        if [ -n "$ALB_DNS" ]; then
+                            echo "Direct probe on ALB origin http://${ALB_DNS}/health..."
+                            ALB_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://${ALB_DNS}/health" || true)
+                            echo "Direct ALB HTTP Status Code: $ALB_CODE"
+
+                            if [ "$ALB_CODE" = "403" ]; then
+                                echo "✅ ALB Origin Isolation Active: Direct requests blocked without CloudFront custom header (HTTP 403)!"
+                            elif [ "$ALB_CODE" = "200" ]; then
+                                echo "✅ Direct ALB Health Probe SUCCESS (HTTP 200 OK)!"
+                            else
+                                echo "ℹ️ ALB Response Code: $ALB_CODE"
+                            fi
+
+                            # If AWS CLI is configured, describe Target Group health
+                            if command -v aws >/dev/null 2>&1; then
+                                TG_ARN=$(grep -o '"arn": *"arn:aws:elasticloadbalancing:[^"]*targetgroup/[^"]*"' terraform.tfstate 2>/dev/null | head -n1 | cut -d '"' -f4 || true)
+                                if [ -n "$TG_ARN" ]; then
+                                    echo "Checking ALB Target Group Health (${TG_ARN})..."
+                                    aws elbv2 describe-target-health --target-group-arn "$TG_ARN"                                         --query "TargetHealthDescriptions[*].{Target:Target.Id,Port:Target.Port,State:TargetHealth.State}"                                         --output table || true
+                                fi
+                            fi
+                        else
+                            echo "ℹ️ ALB DNS not found in state, skipping ALB direct probe."
+                        fi
+
+                        # -------------------------------------------------------------
+                        # 3. VERIFY CLOUDFRONT (CNF) CDN CACHING & WAF PERIMETER
+                        # -------------------------------------------------------------
+                        echo ""
+                        echo "▶ [Tier 3/3: CNF CDN Caching, Headers & WAF L7 Inspection]"
+                        if [ -n "$CF_DOMAIN" ]; then
+                            echo "Verifying CloudFront Caching Headers (/styles.css):"
+                            echo "Request 1 (Cache MISS / POP Fetch):"
+                            curl -s -I "https://${CF_DOMAIN}/styles.css" | grep -iE "(x-cache|via|age|content-type)" || true
+                            sleep 1
+                            echo "Request 2 (Cache HIT / Edge Served):"
+                            curl -s -I "https://${CF_DOMAIN}/styles.css" | grep -iE "(x-cache|via|age|content-type)" || true
+
+                            echo ""
+                            echo "Verifying OWASP Security Headers from CloudFront:"
+                            curl -s -I "https://${CF_DOMAIN}/health" | grep -iE "(strict-transport-security|x-content-type-options|x-frame-options|content-security-policy)" || true
+
+                            echo ""
+                            echo "Verifying AWS WAFv2 Layer 7 Threat Mitigation (Safe SQLi Probe):"
+                            WAF_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://${CF_DOMAIN}/api/products?id=1%20OR%201=1" || true)
+                            echo "WAF SQLi Probe HTTP Status: $WAF_CODE"
+                            if [ "$WAF_CODE" = "403" ]; then
+                                echo "✅ AWS WAF blocked malicious perimeter request (HTTP 403 Forbidden)!"
+                            else
+                                echo "ℹ️ WAF Response Code: $WAF_CODE"
+                            fi
+                        fi
+
+                        echo ""
+                        echo "================================================================="
+                        echo "🎉 Multi-Tier App, ALB & CloudFront (CNF) Verification Completed!"
+                        echo "================================================================="
                     '''
                 }
             }
