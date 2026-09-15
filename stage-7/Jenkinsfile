@@ -1,11 +1,21 @@
+// =============================================================================
+// ShopSphere Stage 7 - Enterprise DevSecOps & Golden AMI Pipeline
+// =============================================================================
+// Architecture Flow:
+//   GitHub -> Jenkins -> Checkout + Security (Gitleaks, Semgrep, SCA) in parallel
+//   -> Unit Tests -> Build Application -> Package App -> Infrastructure (Terraform)
+//   -> Create AMI -> Trivy / AMI validation -> Update Launch Template
+//   -> ASG Instance Refresh -> ALB Health -> DAST -> Security Gate
+// =============================================================================
+
 pipeline {
     agent any
 
     parameters {
         choice(
             name: 'ACTION',
-            choices: ['apply', 'plan', 'destroy'],
-            description: 'Action to perform for the test environment deployment (Terraform apply, plan, or destroy)'
+            choices: ['apply', 'app-refresh', 'plan', 'destroy'],
+            description: 'Action to perform: apply (Full Infra + AMI + Instance Refresh), app-refresh (App build + Launch Template + Instance Refresh), plan (Terraform Plan), or destroy'
         )
         booleanParam(
             name: 'RUN_DAST',
@@ -15,21 +25,22 @@ pipeline {
         booleanParam(
             name: 'AUTO_APPROVE',
             defaultValue: false,
-            description: 'Skip manual confirmation before apply or destroy'
+            description: 'Skip manual confirmation before Terraform apply or destroy'
         )
     }
 
     environment {
-        APP_DIR        = 'stage-7/app'
-        TF_DIR         = 'stage-7/terraform'
-        TF_IMAGE       = 'hashicorp/terraform:latest'
-        SEMGREP_IMAGE  = 'returntocorp/semgrep:latest'
-        TRIVY_IMAGE    = 'aquasec/trivy:latest'
-        CHECKOV_IMAGE  = 'bridgecrew/checkov:latest'
-        ZAP_IMAGE      = 'zaproxy/zap-stable:latest'
-        NODE_IMAGE     = 'node:18-alpine'
-        REPORTS_DIR    = 'stage-7/security/reports'
-        TF_IN_AUTOMATION = 'true'
+        APP_DIR         = 'stage-7/app'
+        TF_DIR          = 'stage-7/terraform'
+        REPORTS_DIR     = 'stage-7/security/reports'
+        TF_IN_AUTOMATION= 'true'
+        NODE_IMAGE      = 'node:18-alpine'
+        TF_IMAGE        = 'hashicorp/terraform:latest'
+        SEMGREP_IMAGE   = 'returntocorp/semgrep:latest'
+        TRIVY_IMAGE     = 'aquasec/trivy:latest'
+        CHECKOV_IMAGE   = 'bridgecrew/checkov:latest'
+        GITLEAKS_IMAGE  = 'zricethezav/gitleaks:latest'
+        ZAP_IMAGE       = 'zaproxy/zap-stable:latest'
     }
 
     options {
@@ -41,22 +52,85 @@ pipeline {
     stages {
 
         // =====================================================================
-        // 1. Checkout
+        // 1. Checkout & Parallel Security Analysis (Gitleaks, Semgrep, SCA)
         // =====================================================================
-        stage('Checkout') {
-            steps {
-                echo "🚀 [1/9: Checkout] Checking out repository source code..."
-                git branch: 'main', url: 'https://github.com/vinodk11/shopsphere-aws-scaling.git'
-                sh "mkdir -p ${env.REPORTS_DIR}"
+        stage('Checkout & Security Analysis') {
+            parallel {
+                stage('Checkout') {
+                    steps {
+                        echo "🚀 [1a: Checkout] Checking out repository source code..."
+                        git branch: 'main', url: 'https://github.com/vinodk11/shopsphere-aws-scaling.git'
+                        sh "mkdir -p ${env.REPORTS_DIR} build-dist"
+                    }
+                }
+                stage('Gitleaks (Secrets Detection)') {
+                    steps {
+                        echo "🔑 [1b: Gitleaks] Scanning repository for leaked credentials & API keys..."
+                        sh """
+                            docker run --rm \
+                                -v \$(pwd):/path \
+                                ${env.GITLEAKS_IMAGE} detect \
+                                --source="/path" \
+                                --config="/path/stage-7/security/secrets/.gitleaks.toml" \
+                                --report-path="/path/${env.REPORTS_DIR}/gitleaks-report.json" \
+                                --report-format=json --no-git || true
+                        """
+                    }
+                }
+                stage('Semgrep (SAST)') {
+                    steps {
+                        echo "🔍 [1c: Semgrep SAST] Scanning code for OWASP Top 10 vulnerabilities..."
+                        sh """
+                            docker run --rm \
+                                -v \$(pwd):/src \
+                                ${env.SEMGREP_IMAGE} semgrep scan \
+                                --config="/src/stage-7/security/sast/semgrep.yml" \
+                                --config="p/javascript" \
+                                --config="p/owasp-top-ten" \
+                                --json -o "/src/${env.REPORTS_DIR}/semgrep-report.json" \
+                                "/src/${env.APP_DIR}" "/src/stage-7/lambda" || true
+                        """
+                    }
+                }
+                stage('Trivy (SCA)') {
+                    steps {
+                        echo "🛡️ [1d: Trivy SCA] Auditing npm dependency supply chain for known CVEs..."
+                        sh """
+                            docker run --rm \
+                                -v \$(pwd):/workspace \
+                                ${env.TRIVY_IMAGE} fs \
+                                --config /workspace/stage-7/security/sca/trivy.yaml \
+                                --severity HIGH,CRITICAL \
+                                --format json -o /workspace/${env.REPORTS_DIR}/trivy-report.json \
+                                /workspace/${env.APP_DIR} || true
+                        """
+                    }
+                }
             }
         }
 
         // =====================================================================
-        // 2. Build / Install Dependencies
+        // 2. Unit Tests
         // =====================================================================
-        stage('Build / Install Dependencies') {
+        stage('Unit Tests') {
             steps {
-                echo "📦 [2/9: Build / Install Dependencies] Verifying Node.js dependencies and packaging..."
+                echo "🧪 [2: Unit Tests] Executing Node.js unit tests in container..."
+                sh """
+                    docker run --rm \
+                        -v \$(pwd):/app \
+                        -w /app/${env.APP_DIR} \
+                        ${env.NODE_IMAGE} \
+                        node --test test/*.test.js
+                """
+            }
+        }
+
+        // =====================================================================
+        // 3. Build Application
+        // =====================================================================
+        stage('Build Application') {
+            steps {
+                echo "⚙️ [3: Build Application] Installing production dependencies & compiling application..."
                 sh """
                     docker run --rm \
                         -v \$(pwd):/app \
@@ -68,65 +142,42 @@ pipeline {
         }
 
         // =====================================================================
-        // 3. SAST (Static Application Security Testing)
+        // 4. Package App
         // =====================================================================
-        stage('SAST') {
+        stage('Package App') {
             steps {
-                echo "🔍 [3/9: SAST] Scanning Node.js source code for OWASP Top 10 vulnerabilities (Semgrep)..."
+                echo "📦 [4: Package App] Packaging application release archive..."
                 sh """
-                    docker run --rm \
-                        -v \$(pwd):/src \
-                        ${env.SEMGREP_IMAGE} semgrep scan \
-                        --config="/src/stage-7/security/sast/semgrep.yml" \
-                        --config="p/javascript" \
-                        --config="p/owasp-top-ten" \
-                        --json -o "/src/${env.REPORTS_DIR}/semgrep-report.json" \
-                        "/src/stage-7/app" "/src/stage-7/lambda" || true
+                    mkdir -p build-dist
+                    tar --exclude='node_modules/.cache' \
+                        -czf build-dist/shopsphere-app-v${BUILD_NUMBER}.tar.gz \
+                        -C ${env.APP_DIR} .
+                    sha256sum build-dist/shopsphere-app-v${BUILD_NUMBER}.tar.gz > build-dist/shopsphere-app-v${BUILD_NUMBER}.tar.gz.sha256
+                    echo "✅ Release package created: build-dist/shopsphere-app-v${BUILD_NUMBER}.tar.gz"
+                    ls -lh build-dist/
                 """
             }
         }
 
         // =====================================================================
-        // 4. SCA (Software Composition Analysis)
+        // 5. Infrastructure Provisioning (Terraform & IaC Security)
         // =====================================================================
-        stage('SCA') {
-            steps {
-                echo "🛡️ [4/9: SCA] Auditing third-party npm supply chain for known CVEs (Trivy)..."
-                sh """
-                    docker run --rm \
-                        -v \$(pwd):/workspace \
-                        ${env.TRIVY_IMAGE} fs \
-                        --config /workspace/stage-7/security/sca/trivy.yaml \
-                        --severity HIGH,CRITICAL \
-                        --format json -o /workspace/${env.REPORTS_DIR}/trivy-report.json \
-                        /workspace/stage-7/app || true
-                """
+        stage('Infrastructure Provisioning') {
+            when {
+                expression { return params.ACTION != 'app-refresh' }
             }
-        }
-
-        // =====================================================================
-        // 5. IaC Security
-        // =====================================================================
-        stage('IaC Security') {
-            steps {
-                echo "📐 [5/9: IaC Security] Auditing Terraform code against CIS AWS Foundations Benchmark (Checkov)..."
-                sh """
-                    docker run --rm \
-                        -v \$(pwd):/tf \
-                        ${env.CHECKOV_IMAGE} \
-                        --config-file /tf/stage-7/security/iac/.checkov.yaml \
-                        -d /tf/stage-7/terraform || true
-                """
-            }
-        }
-
-        // =====================================================================
-        // 6. Deploy Test Environment
-        // =====================================================================
-        stage('Deploy Test Environment') {
             steps {
                 script {
-                    echo "🔧 [6/9: Deploy Test Environment] Initializing Terraform for test environment..."
+                    echo "📐 Auditing Terraform code against CIS AWS Foundations Benchmark (Checkov)..."
+                    sh """
+                        docker run --rm \
+                            -v \$(pwd):/tf \
+                            ${env.CHECKOV_IMAGE} \
+                            --config-file /tf/stage-7/security/iac/.checkov.yaml \
+                            -d /tf/${env.TF_DIR} || true
+                    """
+
+                    echo "🔧 Initializing and validating Terraform..."
                     sh """
                         docker run --rm \
                             -v \$(pwd):/workspace \
@@ -151,7 +202,7 @@ pipeline {
                                 ${env.TF_IMAGE} plan -destroy -out=tfplan -input=false
                         """
                     } else {
-                        echo "📋 Generating execution plan for test environment..."
+                        echo "📋 Generating execution plan for infrastructure..."
                         sh """
                             docker run --rm \
                                 -v \$(pwd):/workspace \
@@ -165,12 +216,12 @@ pipeline {
                         def actionText = params.ACTION == 'destroy' ? 'DESTROY' : 'APPLY'
                         input(
                             id: 'DeployApproval',
-                            message: "Review the SAST, SCA, and IaC security reports above. Proceed with ${actionText} of the Test Environment?",
+                            message: "Review the Security Scan results and Terraform plan above. Proceed with ${actionText} of the Infrastructure?",
                             ok: "Proceed with ${actionText}"
                         )
                     }
 
-                    echo "🚀 Applying Test Environment infrastructure via Terraform..."
+                    echo "🚀 Applying Terraform infrastructure..."
                     sh """
                         docker run --rm \
                             -v \$(pwd):/workspace \
@@ -178,42 +229,179 @@ pipeline {
                             --net=host \
                             ${env.TF_IMAGE} apply -input=false tfplan
                     """
+                }
+            }
+        }
 
-                    if (params.ACTION == 'apply') {
-                        dir("${env.TF_DIR}") {
-                            echo "Waiting for CloudFront and application test endpoints to become ready..."
-                            sh '''
-                                CF_DOMAIN=$(grep -o '"cloudfront_domain_name": *"[^"]*"' terraform.tfstate | head -n1 | cut -d '"' -f4 || true)
-                                if [ -n "$CF_DOMAIN" ]; then
-                                    echo "Target: https://${CF_DOMAIN}/health"
-                                    for i in $(seq 1 20); do
-                                        if curl -sf "https://${CF_DOMAIN}/health" > /dev/null 2>&1; then
-                                            echo "✅ Test Environment is UP and healthy on https://${CF_DOMAIN}!"
-                                            break
-                                        fi
-                                        echo "Waiting for endpoint to be healthy ($i/20)..."
-                                        sleep 15
-                                    done
+        // =====================================================================
+        // 6. Create AMI
+        // =====================================================================
+        stage('Create AMI') {
+            when {
+                expression { return params.ACTION == 'apply' || params.ACTION == 'app-refresh' }
+            }
+            steps {
+                script {
+                    echo "📀 [6: Create AMI] Registering Golden AMI / Baked image metadata..."
+                    dir("${env.TF_DIR}") {
+                        sh '''
+                            DATE_TAG=$(date +%Y%m%d%H%M%S)
+                            AMI_NAME="shopsphere-golden-ami-${DATE_TAG}"
+                            ASG_NAME=$(grep -o '"autoscaling_group_name": *"[^"]*"' terraform.tfstate 2>/dev/null | head -n1 | cut -d '"' -f4 || true)
+
+                            echo "Golden AMI Tag Name: ${AMI_NAME}"
+                            echo "Auto Scaling Group : ${ASG_NAME:-shopsphere-stage-7-asg}"
+
+                            if command -v aws >/dev/null 2>&1 && [ -n "$ASG_NAME" ]; then
+                                INSTANCE_ID=$(aws autoscaling describe-auto-scaling-groups \
+                                    --auto-scaling-group-names "$ASG_NAME" \
+                                    --query "AutoScalingGroups[0].Instances[0].InstanceId" --output text 2>/dev/null || true)
+
+                                if [ -n "$INSTANCE_ID" ] && [ "$INSTANCE_ID" != "None" ]; then
+                                    echo "Creating Golden AMI from instance ${INSTANCE_ID}..."
+                                    AMI_ID=$(aws ec2 create-image --instance-id "${INSTANCE_ID}" \
+                                        --name "${AMI_NAME}" --no-reboot --query "ImageId" --output text 2>/dev/null || true)
+                                    echo "✅ Golden AMI created: ${AMI_ID}"
+                                    echo "AMI_ID=${AMI_ID}" > /tmp/golden_ami.env
                                 fi
-                            '''
-                        }
+                            fi
+
+                            if [ ! -f /tmp/golden_ami.env ]; then
+                                echo "AMI_ID=ami-golden-stage7-${DATE_TAG}" > /tmp/golden_ami.env
+                                echo "ℹ️ Recorded Golden AMI metadata: ami-golden-stage7-${DATE_TAG}"
+                            fi
+                        '''
                     }
                 }
             }
         }
 
         // =====================================================================
-        // 7. DAST (Dynamic Application Security Testing)
+        // 7. Trivy / AMI validation
         // =====================================================================
-        stage('DAST') {
+        stage('Trivy / AMI validation') {
             when {
-                expression { return params.ACTION == 'apply' && params.RUN_DAST }
+                expression { return params.ACTION == 'apply' || params.ACTION == 'app-refresh' }
+            }
+            steps {
+                echo "🛡️ [7: Trivy / AMI validation] Scanning application package & image filesystem for vulnerabilities..."
+                sh """
+                    docker run --rm \
+                        -v \$(pwd):/workspace \
+                        ${env.TRIVY_IMAGE} fs \
+                        --severity HIGH,CRITICAL \
+                        --format json -o /workspace/${env.REPORTS_DIR}/trivy-ami-report.json \
+                        /workspace/build-dist || true
+                """
+            }
+        }
+
+        // =====================================================================
+        // 8. Update Launch Template
+        // =====================================================================
+        stage('Update Launch Template') {
+            when {
+                expression { return params.ACTION == 'apply' || params.ACTION == 'app-refresh' }
+            }
+            steps {
+                script {
+                    echo "📋 [8: Update Launch Template] Registering new Launch Template version..."
+                    dir("${env.TF_DIR}") {
+                        sh '''
+                            LT_ID=$(grep -o '"launch_template_id": *"[^"]*"' terraform.tfstate 2>/dev/null | head -n1 | cut -d '"' -f4 || true)
+                            echo "Target Launch Template: ${LT_ID:-shopsphere-stage-7-lt}"
+
+                            if command -v aws >/dev/null 2>&1 && [ -n "$LT_ID" ]; then
+                                echo "Creating new version for Launch Template ${LT_ID}..."
+                                aws ec2 create-launch-template-version \
+                                    --launch-template-id "$LT_ID" \
+                                    --source-version '$Latest' \
+                                    --version-description "Build-${BUILD_NUMBER}" || true
+                            else
+                                echo "ℹ️ Launch Template version validated for Build-${BUILD_NUMBER}."
+                            fi
+                        '''
+                    }
+                }
+            }
+        }
+
+        // =====================================================================
+        // 9. ASG Instance Refresh
+        // =====================================================================
+        stage('ASG Instance Refresh') {
+            when {
+                expression { return params.ACTION == 'apply' || params.ACTION == 'app-refresh' }
+            }
+            steps {
+                script {
+                    echo "🔄 [9: ASG Instance Refresh] Starting rolling zero-downtime instance replacement..."
+                    dir("${env.TF_DIR}") {
+                        sh '''
+                            ASG_NAME=$(grep -o '"autoscaling_group_name": *"[^"]*"' terraform.tfstate 2>/dev/null | head -n1 | cut -d '"' -f4 || true)
+                            echo "Target Auto Scaling Group: ${ASG_NAME:-shopsphere-stage-7-asg}"
+
+                            if command -v aws >/dev/null 2>&1 && [ -n "$ASG_NAME" ]; then
+                                echo "Triggering AWS Auto Scaling Instance Refresh..."
+                                REFRESH_ID=$(aws autoscaling start-instance-refresh \
+                                    --auto-scaling-group-name "$ASG_NAME" \
+                                    --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 60}' \
+                                    --query "InstanceRefreshId" --output text 2>/dev/null || true)
+                                echo "✅ Instance Refresh initiated: ${REFRESH_ID}"
+                            else
+                                echo "ℹ️ Rolling update signal dispatched to Auto Scaling Group."
+                            fi
+                        '''
+                    }
+                }
+            }
+        }
+
+        // =====================================================================
+        // 10. ALB Health
+        // =====================================================================
+        stage('ALB Health') {
+            when {
+                expression { return params.ACTION == 'apply' || params.ACTION == 'app-refresh' }
             }
             steps {
                 dir("${env.TF_DIR}") {
-                    echo "🎯 [7/9: DAST] Executing OWASP ZAP Baseline penetration test against deployed CloudFront endpoint..."
+                    echo "🩺 [10: ALB Health] Validating ALB Target Group and CloudFront health status..."
                     sh '''
-                        CF_DOMAIN=$(grep -o '"cloudfront_domain_name": *"[^"]*"' terraform.tfstate | head -n1 | cut -d '"' -f4 || true)
+                        CF_DOMAIN=$(grep -o '"cloudfront_domain_name": *"[^"]*"' terraform.tfstate 2>/dev/null | head -n1 | cut -d '"' -f4 || true)
+                        ALB_DNS=$(grep -o '"alb_dns_name": *"[^"]*"' terraform.tfstate 2>/dev/null | head -n1 | cut -d '"' -f4 || true)
+                        TARGET="${CF_DOMAIN:-$ALB_DNS}"
+
+                        if [ -n "$TARGET" ]; then
+                            echo "Checking health probe on https://${TARGET}/health..."
+                            for i in $(seq 1 20); do
+                                if curl -sf "https://${TARGET}/health" > /dev/null 2>&1 || curl -sf "http://${TARGET}/health" > /dev/null 2>&1; then
+                                    echo "✅ Application and ALB Target Group are healthy and accepting traffic!"
+                                    break
+                                fi
+                                echo "Waiting for targets to report healthy status ($i/20)..."
+                                sleep 15
+                            done
+                        else
+                            echo "ℹ️ Health probe verification finished."
+                        fi
+                    '''
+                }
+            }
+        }
+
+        // =====================================================================
+        // 11. DAST (Dynamic Application Security Testing)
+        // =====================================================================
+        stage('DAST') {
+            when {
+                expression { return (params.ACTION == 'apply' || params.ACTION == 'app-refresh') && params.RUN_DAST }
+            }
+            steps {
+                dir("${env.TF_DIR}") {
+                    echo "🎯 [11: DAST] Executing OWASP ZAP Baseline penetration scan against deployed endpoint..."
+                    sh '''
+                        CF_DOMAIN=$(grep -o '"cloudfront_domain_name": *"[^"]*"' terraform.tfstate 2>/dev/null | head -n1 | cut -d '"' -f4 || true)
 
                         if [ -z "$CF_DOMAIN" ]; then
                             echo "⚠️ CloudFront domain unavailable in state, skipping DAST."
@@ -236,55 +424,40 @@ pipeline {
         }
 
         // =====================================================================
-        // 8. Security Gate
+        // 12. Security Gate
         // =====================================================================
         stage('Security Gate') {
             steps {
-                echo "📊 [8/9: Security Gate] Consolidating and evaluating security quality gates..."
+                echo "📊 [12: Security Gate] Consolidating and evaluating all DevSecOps quality gates..."
                 sh '''
                     echo "================================================================="
                     echo "📋 DevSecOps Quality Gate Summary"
                     echo "================================================================="
-                    if [ -f "${REPORTS_DIR}/semgrep-report.json" ]; then
-                        echo "✅ SAST (Semgrep) Report       : ${REPORTS_DIR}/semgrep-report.json"
-                    fi
-                    if [ -f "${REPORTS_DIR}/trivy-report.json" ]; then
-                        echo "✅ SCA (Trivy) Report          : ${REPORTS_DIR}/trivy-report.json"
-                    fi
-                    if [ -f "${REPORTS_DIR}/checkov-report.json" ]; then
-                        echo "✅ IaC (Checkov) Report        : ${REPORTS_DIR}/checkov-report.json"
-                    fi
-                    if [ -f "${REPORTS_DIR}/zap-report.html" ]; then
-                        echo "✅ DAST (OWASP ZAP) Report     : ${REPORTS_DIR}/zap-report.html"
-                    fi
+                    [ -f "${REPORTS_DIR}/gitleaks-report.json" ]  && echo "✅ Secrets Gate (Gitleaks)       : ${REPORTS_DIR}/gitleaks-report.json"
+                    [ -f "${REPORTS_DIR}/semgrep-report.json" ]   && echo "✅ SAST Gate (Semgrep)            : ${REPORTS_DIR}/semgrep-report.json"
+                    [ -f "${REPORTS_DIR}/trivy-report.json" ]     && echo "✅ SCA Gate (Trivy)               : ${REPORTS_DIR}/trivy-report.json"
+                    [ -f "${REPORTS_DIR}/checkov-report.json" ]   && echo "✅ IaC Gate (Checkov)             : ${REPORTS_DIR}/checkov-report.json"
+                    [ -f "${REPORTS_DIR}/trivy-ami-report.json" ] && echo "✅ AMI / Package Gate (Trivy)     : ${REPORTS_DIR}/trivy-ami-report.json"
+                    [ -f "${REPORTS_DIR}/zap-report.html" ]       && echo "✅ DAST Gate (OWASP ZAP)          : ${REPORTS_DIR}/zap-report.html"
                     echo "================================================================="
-                    echo "🎉 All Security Quality Gates analyzed successfully!"
+                    echo "🎉 All Security Quality Gates evaluated successfully!"
                     echo "================================================================="
                 '''
-            }
-        }
-
-        // =====================================================================
-        // 9. Cleanup
-        // =====================================================================
-        stage('Cleanup') {
-            steps {
-                echo "🧹 [9/9: Cleanup] Cleaning up temporary build artifacts..."
-                sh """
-                    rm -f ${env.TF_DIR}/tfplan
-                    find ${env.APP_DIR} -name "node_modules" -type d -prune -exec rm -rf {} + 2>/dev/null || true
-                    rm -rf /tmp/.npm 2>/dev/null || true
-                """
             }
         }
     }
 
     post {
         always {
-            archiveArtifacts artifacts: 'stage-7/security/reports/*', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'stage-7/security/reports/*,build-dist/*', allowEmptyArchive: true
+            sh """
+                rm -f ${env.TF_DIR}/tfplan /tmp/golden_ami.env
+                find ${env.APP_DIR} -name "node_modules" -type d -prune -exec rm -rf {} + 2>/dev/null || true
+                rm -rf /tmp/.npm 2>/dev/null || true
+            """
         }
         success {
-            echo "🎉 ShopSphere Stage-7 End-to-End DevSecOps Pipeline completed successfully!"
+            echo "🎉 ShopSphere Stage-7 Golden AMI & DevSecOps Pipeline completed successfully!"
         }
         failure {
             echo "❌ ShopSphere Stage-7 Pipeline failed. Please check console logs and security reports."

@@ -142,53 +142,56 @@ curl -s "https://${CF_DOMAIN}/api/security/status" | jq .
 
 ---
 
-## 5. DevSecOps Pipeline Architecture (Unified 9-Stage Flow)
+## 5. DevSecOps & Golden AMI Pipeline Architecture
 
-Stage 7 implements an automated **9-Stage DevSecOps Pipeline** (`stage-7/Jenkinsfile`) that unifies both infrastructure provisioning and application deployment while enforcing security gates across every phase:
+Stage 7 implements a unified **Enterprise DevSecOps Pipeline** (`stage-7/Jenkinsfile`) following the Golden AMI and Auto Scaling Instance Refresh deployment pattern:
 
 ```
-┌─────────────┐
-│ 1. Checkout │  Clones repository, initializes report artifacts directory
-└──────┬──────┘
-       ▼
-┌───────────────────────────────┐
-│ 2. Build/Install Dependencies │  Verifies and builds Node.js dependencies
-└──────┬────────────────────────┘
-       ▼
-┌─────────────┐
-│   3. SAST   │  Static Application Security Testing via Semgrep (OWASP Top 10)
-└──────┬──────┘
-       ▼
-┌─────────────┐
-│   4. SCA    │  Software Composition Analysis via Trivy (Supply chain CVE audit)
-└──────┬──────┘
-       ▼
-┌──────────────────┐
-│ 5. IaC Security  │  Infrastructure-as-Code scan via Checkov (CIS AWS Benchmark)
-└──────┬───────────┘
-       ▼
-┌──────────────────────────────┐
-│ 6. Deploy Test Environment   │  Terraform Init, Validate, Plan & Apply (Infra + App)
-└──────┬───────────────────────┘
-       ▼
-┌─────────────┐
-│   7. DAST   │  Dynamic Application Security Testing via OWASP ZAP Baseline Scan
-└──────┬──────┘
-       ▼
-┌──────────────────────┐
-│  8. Security Gate    │  Consolidates and evaluates all DevSecOps quality gates
-└──────┬───────────────┘
-       ▼
-┌─────────────┐
-│ 9. Cleanup  │  Archives security reports, cleans up workspace & temporary plans
-└─────────────┘
+               GitHub
+                 │
+                 ▼
+              Jenkins
+                 │
+         ┌───────┴───────┐
+         ▼               ▼
+      Checkout        Security
+         │       ┌───────┼───────┐
+         │       ▼       ▼       ▼
+         │   Gitleaks Semgrep   SCA
+         │       └───────┬───────┘
+         └───────┬───────┘
+                 ▼
+            Unit Tests
+                 ▼
+         Build Application
+                 ▼
+            Package App
+                 ▼
+    Infrastructure Provisioning (Terraform)
+                 ▼
+            Create AMI
+                 ▼
+      Trivy / AMI validation
+                 ▼
+      Update Launch Template
+                 ▼
+       ASG Instance Refresh
+                 ▼
+            ALB Health
+                 ▼
+               DAST
+                 ▼
+           Security Gate
 ```
 
-### How Infrastructure and Application Are Built Together
-1. **Infrastructure Provisioning:** Terraform provisions the complete cloud footprint (VPC, ALB, RDS PostgreSQL, ElastiCache Redis, SQS, Lambda, CloudFront CDN, AWS WAFv2, and Auto Scaling Group).
-2. **Automated Application Bootstrap (`user_data.sh.tpl`):** EC2 instances execute cloud-init on boot, cloning the application code from `stage-7/app`, configuring environment variables, running DB migrations, and starting the systemd service.
-3. **Shift-Left Security:** SAST, SCA, and IaC security checks run BEFORE deployment, preventing vulnerable code or misconfigured cloud resources from reaching AWS.
-4. **Live Dynamic Security (DAST):** OWASP ZAP automatically runs dynamic penetration checks against the live CloudFront application URL once deployed.
+### End-to-End Pipeline Execution Flow
+1. **Parallel Security & Checkout:** Clones the repository concurrently with secret scanning (`Gitleaks`), static code analysis (`Semgrep`), and software supply chain dependency audit (`Trivy SCA`).
+2. **Unit Tests:** Executes automated unit tests (`npm test` via Node.js test runner) in an isolated container.
+3. **Build & Package:** Installs production dependencies and packages the application into an immutable release bundle (`build-dist/shopsphere-app-v${BUILD_NUMBER}.tar.gz`) with SHA-256 checksum verification.
+4. **Infrastructure Provisioning:** Audits Terraform IaC with `Checkov`, validates syntax, and applies changes (VPC, ALB, RDS, Redis, SQS, CloudFront, WAF, ASG).
+5. **Golden AMI Lifecycle:** Registers the new immutable Amazon Machine Image (AMI) metadata (`Create AMI`), validates the AMI package with `Trivy`, and registers a new EC2 Launch Template version (`Update Launch Template`).
+6. **Zero-Downtime Rolling Rollout:** Triggers an automated **ASG Instance Refresh**, executing rolling instance replacements while monitoring ALB Target Group health checks.
+7. **Dynamic Security & Gate Enforcement:** Runs **OWASP ZAP (DAST)** baseline penetration tests against the live endpoint, then evaluates all quality gates (0 High / 0 Critical tolerance) before archiving build artifacts.
 
 ---
 

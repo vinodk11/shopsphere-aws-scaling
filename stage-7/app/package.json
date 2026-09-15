@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "security:scan": "bash ../scripts/run-security-scans.sh"
+    "security:scan": "bash ../scripts/run-security-scans.sh",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "@aws-sdk/client-sqs": "^3.540.0",
