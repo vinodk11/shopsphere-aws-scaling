@@ -223,7 +223,8 @@ app.get('/health', async (req, res) => {
   const isHealthy = dbStatus === 'connected';
   const cfId = req.headers['x-amz-cf-id'] || null;
   const via = req.headers['via'] || '';
-  const isCloudFront = Boolean(cfId || (via && via.toLowerCase().includes('cloudfront')));
+  const isViaCloudFront = Boolean(cfId || (via && via.toLowerCase().includes('cloudfront')));
+  const isCloudFront = isViaCloudFront;
 
   res.status(isHealthy ? 200 : 503).json({
     status: isHealthy ? 'UP' : 'DEGRADED',

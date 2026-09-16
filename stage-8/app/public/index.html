@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ShopSphere - Stage 7: DevSecOps</title>
+  <title>ShopSphere - Stage 8: Docker Containerization</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,8 +13,8 @@
   <!-- Stage Indicator Banner -->
   <div class="stage-banner">
     <div class="container banner-content">
-      <span class="badge">AWS Stage 7: DevSecOps</span>
-      <span class="stage-desc">Automated Security Gates &bull; Gitleaks Secrets &bull; Semgrep SAST &bull; Trivy SCA &bull; Checkov IaC &bull; OWASP ZAP DAST &bull; AWS WAF &bull; CloudFront</span>
+      <span class="badge">AWS Stage 8: Docker Containerization</span>
+      <span class="stage-desc">Multi-Stage Alpine Builds &bull; Non-Root UID 10001 &bull; Amazon ECR &bull; Hadolint &bull; Trivy Image Scan &bull; AWS WAF &bull; CloudFront</span>
       <div id="systemHealthBadge" class="health-badge"><span class="pulse"></span> Checking System...</div>
     </div>
   </div>
@@ -26,11 +26,11 @@
         <div class="logo-icon">🪐</div>
         <div>
           <h1>ShopSphere</h1>
-          <span class="tagline">AWS Architecture Evolution &bull; Stage 7 (DevSecOps)</span>
+          <span class="tagline">AWS Architecture Evolution &bull; Stage 8 (Docker Containerization)</span>
         </div>
       </div>
       <div class="nav-actions">
-        <button id="systemInfoBtn" class="btn btn-secondary">Security &amp; Architecture</button>
+        <button id="systemInfoBtn" class="btn btn-secondary">Container &amp; Architecture</button>
         <button id="cartBtn" class="btn btn-primary">
           <span>🛒 Cart</span>
           <span id="cartCount" class="cart-count">0</span>
@@ -42,18 +42,18 @@
   <!-- Hero Section -->
   <section class="hero">
     <div class="container">
-      <h2>Automated Security Pipeline &amp; Quality Gates</h2>
-      <p>Integrating Shift-Left DevSecOps automation: Gitleaks secrets scanning, Semgrep SAST, Trivy dependency SCA, Checkov CIS compliance, and OWASP ZAP DAST protecting a global CloudFront &amp; AWS WAF perimeter.</p>
+      <h2>Containerized Microservices &amp; Multi-Stage Docker Builds</h2>
+      <p>Hardened multi-stage Alpine Linux containers with non-root UID 10001 execution, dumb-init PID 1 orchestration, Amazon ECR automated scanning, Hadolint &amp; Trivy security gates, and AWS WAF/CloudFront edge protection.</p>
 
-      <!-- Stage 7 DevSecOps & Perimeter Visualizer -->
+      <!-- Stage 8 Docker & ECR Visualizer -->
       <div class="event-pipeline-card">
         <div class="event-pipeline-header">
           <div class="event-pipeline-title">
-            <span>🛡️ DevSecOps Continuous Security &amp; Delivery Pipeline</span>
+            <span>🐳 Docker Containerization &amp; Continuous Delivery Pipeline</span>
           </div>
           <div style="display: flex; gap: 0.5rem;">
             <button class="btn btn-secondary btn-sm" onclick="loadSecurityInfo()">
-              <span>⚡ Security Gates</span>
+              <span>⚡ Container Gates</span>
             </button>
             <button class="btn btn-secondary btn-sm" onclick="refreshQueueStats()">
               <span>🔄 SQS Stats</span>
@@ -62,61 +62,61 @@
         </div>
 
         <div class="pipeline-flow">
-          <!-- Gate 1: Secrets & SAST -->
+          <!-- Gate 1: Dockerfile Security (Hadolint) -->
           <div class="flow-step security-active">
             <div class="flow-step-header">
-              <span>🔑</span>
-              <span>1. Code &amp; Secrets Gate</span>
+              <span>🔍</span>
+              <span>1. Dockerfile Standards</span>
             </div>
-            <div class="flow-step-desc">Gitleaks &bull; Semgrep</div>
+            <div class="flow-step-desc">Hadolint CIS Benchmark</div>
             <div class="flow-metric">Status: <span id="gate1Status" style="color: var(--accent-green);">PASSED</span></div>
           </div>
 
-          <!-- Gate 2: Supply Chain SCA -->
+          <!-- Gate 2: Multi-Stage Build -->
           <div class="flow-step security-active">
             <div class="flow-step-header">
-              <span>📦</span>
-              <span>2. Supply Chain Gate</span>
+              <span>🏗️</span>
+              <span>2. Multi-Stage Build</span>
             </div>
-            <div class="flow-step-desc">Trivy Vulnerability Scan</div>
-            <div class="flow-metric">Threshold: <span id="gate2Status" style="color: var(--accent-green);">HIGH/CRIT 0</span></div>
+            <div class="flow-step-desc">Builder &rarr; Runner</div>
+            <div class="flow-metric">Non-Root: <span id="gate2Status" style="color: var(--accent-green);">UID 10001</span></div>
           </div>
 
-          <!-- Gate 3: IaC Compliance -->
+          <!-- Gate 3: Trivy Image CVE Scan -->
           <div class="flow-step security-active">
-            <div class="flow-step-header">
-              <span>📐</span>
-              <span>3. IaC Security Gate</span>
-            </div>
-            <div class="flow-step-desc">Checkov CIS Benchmark</div>
-            <div class="flow-metric">Compliance: <span id="gate3Status" style="color: var(--accent-green);">PASSED</span></div>
-          </div>
-
-          <!-- Gate 4: Perimeter Defense -->
-          <div class="flow-step waf-active">
             <div class="flow-step-header">
               <span>🛡️</span>
-              <span>4. WAF &amp; CloudFront</span>
+              <span>3. Image Vulnerability Scan</span>
             </div>
-            <div class="flow-step-desc">L7 Defense &bull; Lockdown</div>
-            <div class="flow-metric">Perimeter: <span id="perimeterStatus" style="color: var(--secondary);">ENFORCED</span></div>
+            <div class="flow-step-desc">Trivy Container Scanner</div>
+            <div class="flow-metric">Threshold: <span id="gate3Status" style="color: var(--accent-green);">HIGH/CRIT 0</span></div>
           </div>
 
-          <!-- Gate 5: Dynamic Testing -->
+          <!-- Gate 4: Amazon ECR Push -->
+          <div class="flow-step waf-active">
+            <div class="flow-step-header">
+              <span>📦</span>
+              <span>4. Amazon ECR Registry</span>
+            </div>
+            <div class="flow-step-desc">Scan-on-Push &bull; Lifecycle</div>
+            <div class="flow-metric">Registry: <span id="perimeterStatus" style="color: var(--secondary);">ACTIVE</span></div>
+          </div>
+
+          <!-- Gate 5: ASG Container Runtime -->
           <div class="flow-step active">
             <div class="flow-step-header">
-              <span>🎯</span>
-              <span>5. DAST &amp; Runtime</span>
+              <span>⚡</span>
+              <span>5. ASG Docker Runtime</span>
             </div>
-            <div class="flow-step-desc">OWASP ZAP &bull; Headers</div>
-            <div class="flow-metric">Headers: <span id="dastStatus" style="color: var(--accent-green);">CSP / HSTS</span></div>
+            <div class="flow-step-desc">Nginx Proxy &bull; Auto-Restart</div>
+            <div class="flow-metric">Runtime: <span id="dastStatus" style="color: var(--accent-green);">CONTAINER</span></div>
           </div>
         </div>
 
         <!-- Security Live Diagnostics Bar -->
         <div class="edge-diagnostics-bar">
           <div>
-            <span class="security-gate-pill" id="pipelineGatePill">🛡️ Security Pipeline: 5/5 Gates Passed</span>
+            <span class="security-gate-pill" id="pipelineGatePill">🐳 Docker Container: Active (PID 1 dumb-init)</span>
             <span class="waf-pill" id="wafPill">🛡️ WAF: 4 Active Rules</span>
           </div>
           <div style="display: flex; gap: 1rem; align-items: center;">
@@ -142,59 +142,60 @@
   </main>
 
   <!-- System Info Modal -->
+  <!-- System Info Modal -->
   <div id="infoModal" class="modal">
     <div class="modal-content">
       <div class="modal-header">
-        <h3>DevSecOps &amp; Security Architecture (Stage 7)</h3>
+        <h3>Docker Containerization &amp; Architecture (Stage 8)</h3>
         <button class="close-btn" id="closeInfoModal">&times;</button>
       </div>
       <div class="modal-body">
         <div class="arch-box">
-          <code>Gitleaks &rarr; Semgrep &rarr; Trivy &rarr; Checkov &rarr; Terraform Apply &rarr; OWASP ZAP &rarr; WAF/CloudFront &rarr; ALB &rarr; ASG &rarr; SQS/Lambda &rarr; RDS</code>
+          <code>Hadolint &rarr; Multi-Stage Build &rarr; Trivy Image Scan &rarr; Amazon ECR &rarr; Terraform Apply &rarr; ASG Docker Fleet &rarr; CloudFront/WAF &rarr; ALB &rarr; RDS &amp; Redis</code>
         </div>
         <div class="metrics-grid" id="systemMetrics">
           <div class="metric-card">
-            <span class="metric-label">DevSecOps Gates</span>
-            <span class="metric-val" id="metricGates">5 Enforced</span>
+            <span class="metric-label">Runtime Engine</span>
+            <span class="metric-val" id="metricEngine">Docker Engine</span>
           </div>
           <div class="metric-card">
-            <span class="metric-label">Perimeter WAF</span>
-            <span class="metric-val" id="metricWaf">Active (4 Rules)</span>
+            <span class="metric-label">Image Base</span>
+            <span class="metric-val" id="metricBase">Alpine 3.19 (Node 18)</span>
           </div>
           <div class="metric-card">
-            <span class="metric-label">Origin Lockdown</span>
-            <span class="metric-val" id="metricLockdown">X-Origin-Verify</span>
+            <span class="metric-label">Container Security</span>
+            <span class="metric-val" id="metricSecurity">Non-Root (10001)</span>
           </div>
           <div class="metric-card">
-            <span class="metric-label">HTTP Security</span>
-            <span class="metric-val" id="metricHeaders">CSP + HSTS</span>
+            <span class="metric-label">Registry</span>
+            <span class="metric-val" id="metricRegistry">Amazon ECR</span>
           </div>
         </div>
 
-        <h4 style="margin-top: 1.25rem; margin-bottom: 0.5rem;">Automated CI/CD Quality Gates</h4>
+        <h4 style="margin-top: 1.25rem; margin-bottom: 0.5rem;">Container Security &amp; Delivery Gates</h4>
         <div class="security-checklist">
           <div class="security-item">
-            <div><strong>Gate 1: Secrets Scanning</strong><br><small style="color: var(--text-muted)">Gitleaks (Zero credential leaks)</small></div>
+            <div><strong>Gate 1: Hadolint Dockerfile Linter</strong><br><small style="color: var(--text-muted)">CIS Docker benchmarks &amp; syntax best practices</small></div>
+            <span class="status-pill fulfilled">PASSED</span>
+          </div>
+          <div class="security-item">
+            <div><strong>Gate 2: Multi-Stage Build Isolation</strong><br><small style="color: var(--text-muted)">Build dependencies stripped from lean runner image</small></div>
             <span class="status-pill fulfilled">ENFORCED</span>
           </div>
           <div class="security-item">
-            <div><strong>Gate 2: SAST Static Code</strong><br><small style="color: var(--text-muted)">Semgrep (OWASP Top 10 rules)</small></div>
+            <div><strong>Gate 3: Trivy Container Image Scan</strong><br><small style="color: var(--text-muted)">Automated CVE scanning for OS packages and npm libs</small></div>
+            <span class="status-pill fulfilled">0 CRITICAL</span>
+          </div>
+          <div class="security-item">
+            <div><strong>Gate 4: Amazon ECR Private Registry</strong><br><small style="color: var(--text-muted)">Scan on push &bull; Automated lifecycle retention policy</small></div>
             <span class="status-pill fulfilled">ENFORCED</span>
           </div>
           <div class="security-item">
-            <div><strong>Gate 3: SCA Dependencies</strong><br><small style="color: var(--text-muted)">Trivy (No Critical/High CVEs)</small></div>
-            <span class="status-pill fulfilled">ENFORCED</span>
+            <div><strong>Gate 5: Non-Root Execution &amp; dumb-init</strong><br><small style="color: var(--text-muted)">UID 10001 shopsphere &bull; PID 1 signal forwarding</small></div>
+            <span class="status-pill fulfilled">ACTIVE</span>
           </div>
           <div class="security-item">
-            <div><strong>Gate 4: IaC Compliance</strong><br><small style="color: var(--text-muted)">Checkov (CIS AWS Benchmark)</small></div>
-            <span class="status-pill fulfilled">ENFORCED</span>
-          </div>
-          <div class="security-item">
-            <div><strong>Gate 5: DAST Penetration</strong><br><small style="color: var(--text-muted)">OWASP ZAP Baseline Scanner</small></div>
-            <span class="status-pill fulfilled">ENFORCED</span>
-          </div>
-          <div class="security-item">
-            <div><strong>Runtime Rate Limiting</strong><br><small style="color: var(--text-muted)">WAF Edge + Node.js 120 req/m</small></div>
+            <div><strong>Gate 6: Edge WAF &amp; CloudFront Lockdown</strong><br><small style="color: var(--text-muted)">X-Origin-Verify &bull; Rate limiting &bull; AWS Managed Rules</small></div>
             <span class="status-pill fulfilled">ACTIVE</span>
           </div>
         </div>
@@ -249,7 +250,7 @@
   <footer class="footer">
     <div class="container footer-content">
       <p>&copy; 2026 ShopSphere Project &bull; Built for AWS Architecture Learning</p>
-      <p class="footer-sub">Stage 7: DevSecOps (SAST + SCA + Secrets + IaC + DAST + CloudFront + WAF + SQS + Lambda + RDS)</p>
+      <p class="footer-sub">Stage 8: Docker Containerization (Multi-Stage Builds + ECR + Image Security + CloudFront + WAF + ASG + SQS + Lambda + RDS)</p>
     </div>
   </footer>
 
@@ -337,8 +338,9 @@
         const badge = document.getElementById('systemHealthBadge');
         if (data.status === 'UP') {
           badge.className = 'health-badge health-up';
-          const edgeInfo = data.edge?.isViaCloudFront ? 'CloudFront' : 'Direct';
-          badge.innerHTML = `<span class="pulse green"></span> ${edgeInfo} &bull; Security: Active &bull; RDS (${data.database.latencyMs}ms)`;
+          const edgeInfo = data.edge?.isViaCloudFront ? 'CloudFront Edge' : 'Direct';
+          const containerBadge = data.container?.isContainer ? '🐳 Docker' : 'Host';
+          badge.innerHTML = `<span class="pulse green"></span> ${containerBadge} &bull; ${edgeInfo} &bull; RDS (${data.database.latencyMs}ms)`;
         } else {
           badge.className = 'health-badge health-down';
           badge.innerHTML = `<span class="pulse red"></span> Degraded`;

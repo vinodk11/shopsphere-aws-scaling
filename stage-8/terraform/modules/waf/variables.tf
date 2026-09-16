@@ -11,7 +11,7 @@ variable "project_name" {
 variable "environment" {
   description = "Deployment environment (e.g., stage6, dev, prod)"
   type        = string
-  default     = "stage6"
+  default     = "stage8"
 }
 
 variable "rate_limit" {

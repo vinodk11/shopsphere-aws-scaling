@@ -1,5 +1,5 @@
 # ==============================================================================
-# Global & Environment Variables — Stage 6 (CloudFront + WAF + SQS + Lambda + Redis + RDS)
+# Global & Environment Variables — Stage 8 (Docker + ECR + CloudFront + WAF + ASG)
 # ==============================================================================
 
 variable "aws_region" {
@@ -17,7 +17,7 @@ variable "project_name" {
 variable "environment" {
   description = "The deployment environment stage"
   type        = string
-  default     = "stage6"
+  default     = "stage8"
 }
 
 # ------------------------------------------------------------------------------
