@@ -20,7 +20,7 @@ locals {
     Project     = "ShopSphere"
     Environment = var.environment
     ManagedBy   = "Terraform"
-    Stage       = "Stage 8 - Docker (Containerization + ECR + CloudFront + WAF + ASG)"
+    Stage       = "Stage 8 - Docker Containerization + ECR + CloudFront + WAF + ASG"
   }
 }
 

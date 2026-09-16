@@ -10,7 +10,7 @@ locals {
 resource "aws_cloudfront_distribution" "this" {
   enabled         = true
   is_ipv6_enabled = true
-  comment         = "ShopSphere Global Edge CDN - Stage 6 (${var.environment})"
+  comment         = "ShopSphere Global Edge CDN - Stage 8 (${var.environment})"
   price_class     = var.price_class
   web_acl_id      = var.web_acl_arn
 
