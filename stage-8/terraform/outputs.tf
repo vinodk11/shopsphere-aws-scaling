@@ -50,6 +50,16 @@ output "asg_name" {
   value       = module.asg.asg_name
 }
 
+output "launch_template_id" {
+  description = "ID of the EC2 Launch Template used by ASG"
+  value       = module.asg.launch_template_id
+}
+
+output "launch_template_arn" {
+  description = "ARN of the EC2 Launch Template used by ASG"
+  value       = module.asg.launch_template_arn
+}
+
 # ------------------------------------------------------------------------------
 # Database & Cache Outputs
 # ------------------------------------------------------------------------------

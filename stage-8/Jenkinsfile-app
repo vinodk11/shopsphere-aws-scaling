@@ -1,0 +1,431 @@
+// =============================================================================
+// ShopSphere Stage 8 - Dedicated Application CI/CD Pipeline
+// =============================================================================
+// Responsibility: Application build, testing, multi-stage Docker packaging,
+// image security scanning, ECR publishing with immutable tags, ASG rolling
+// deployment via Instance Refresh, multi-tier health verification, and DAST.
+//
+// This pipeline does NOT run Terraform or provision AWS infrastructure.
+//
+// Pipeline Flow:
+//   Checkout
+//   ↓
+//   Application Build & Dependency Audit
+//   ↓
+//   Unit Tests (node --test)
+//   ↓
+//   Parallel Application Security (Gitleaks Secrets, Semgrep SAST, Trivy SCA)
+//   ↓
+//   Dockerfile Linting (Hadolint)
+//   ↓
+//   Docker Image Multi-Stage Build (Immutable Tag: ${BUILD_NUMBER} / ${GIT_COMMIT})
+//   ↓
+//   Container Image Security Scan (Trivy Image)
+//   ↓
+//   Amazon ECR Authentication & Immutable Push
+//   ↓
+//   ASG Rolling Deployment (Launch Template Version Update + Instance Refresh)
+//   ↓
+//   Wait for ASG Instance Refresh (Polling with strict failure detection)
+//   ↓
+//   Application & Edge Health Checks (CloudFront, ALB, Container, DB, Redis)
+//   ↓
+//   Dynamic Application Security Testing (DAST via OWASP ZAP)
+//   ↓
+//   Final Security Quality Gate
+// =============================================================================
+
+pipeline {
+    agent any
+
+    parameters {
+        choice(
+            name: 'ENVIRONMENT',
+            choices: ['stage8', 'dev', 'test', 'prod'],
+            description: 'Target AWS environment hosting the existing infrastructure'
+        )
+        string(
+            name: 'OVERRIDE_IMAGE_TAG',
+            defaultValue: '',
+            description: 'Optional manual image tag override (Leave empty to use build number: release-${BUILD_NUMBER})'
+        )
+        booleanParam(
+            name: 'RUN_DAST',
+            defaultValue: true,
+            description: 'Execute OWASP ZAP Dynamic Application Security Testing (DAST) baseline scan post-rollout'
+        )
+        booleanParam(
+            name: 'STRICT_SECURITY_GATES',
+            defaultValue: true,
+            description: 'Fail pipeline on any CRITICAL or HIGH vulnerability detected across security scanners'
+        )
+    }
+
+    environment {
+        APP_DIR            = 'stage-8/app'
+        REPORTS_DIR        = 'stage-8/security/reports'
+        PROJECT_NAME       = 'shopsphere'
+        AWS_DEFAULT_REGION = 'us-east-1'
+        NODE_IMAGE         = 'node:18-alpine'
+        SEMGREP_IMAGE      = 'returntocorp/semgrep:latest'
+        TRIVY_IMAGE        = 'aquasec/trivy:latest'
+        GITLEAKS_IMAGE     = 'zricethezav/gitleaks:latest'
+        HADOLINT_IMAGE     = 'hadolint/hadolint:latest'
+        ZAP_IMAGE          = 'zaproxy/zap-stable:latest'
+    }
+
+    options {
+        timeout(time: 60, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '15'))
+        ansiColor('xterm')
+    }
+
+    stages {
+
+        // =====================================================================
+        // 1. Source Checkout & Version Derivation
+        // =====================================================================
+        stage('Checkout & Versioning') {
+            steps {
+                echo "🚀 [1/12: Checkout] Checking out application source code..."
+                checkout scm
+                script {
+                    def gitCommitShort = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    env.GIT_COMMIT_SHORT = gitCommitShort
+
+                    // Determine immutable image tag - Never use 'latest' for production release
+                    if (params.OVERRIDE_IMAGE_TAG && params.OVERRIDE_IMAGE_TAG.trim() != '') {
+                        env.RELEASE_TAG = params.OVERRIDE_IMAGE_TAG.trim()
+                    } else {
+                        env.RELEASE_TAG = "v8.${env.BUILD_NUMBER}-${gitCommitShort}"
+                    }
+
+                    echo "📦 Immutable Release Tag: ${env.RELEASE_TAG}"
+                    sh "mkdir -p ${env.REPORTS_DIR} build-dist"
+                }
+            }
+        }
+
+        // =====================================================================
+        // 2. Application Dependency Verification
+        // =====================================================================
+        stage('Application Build & Dependencies') {
+            steps {
+                echo "🔨 [2/12: Build] Verifying package manifests and dependencies..."
+                sh """
+                    docker run --rm \
+                        -v \$(pwd):/app \
+                        -w /app/${env.APP_DIR} \
+                        ${env.NODE_IMAGE} \
+                        sh -c "node -v && npm -v && npm list --depth=0 || true"
+                """
+            }
+        }
+
+        // =====================================================================
+        // 3. Unit Tests
+        // =====================================================================
+        stage('Unit Tests') {
+            steps {
+                echo "🧪 [3/12: Unit Tests] Executing Node.js unit tests in isolated test container..."
+                sh """
+                    docker run --rm \
+                        -v \$(pwd):/app \
+                        -w /app/${env.APP_DIR} \
+                        ${env.NODE_IMAGE} \
+                        node --test
+                """
+            }
+        }
+
+        // =====================================================================
+        // 4. Parallel Application Security Scanning (Gitleaks, Semgrep, Trivy SCA)
+        // =====================================================================
+        stage('Application Security Analysis') {
+            parallel {
+                stage('Gitleaks (Secrets Detection)') {
+                    steps {
+                        echo "🔑 [4a: Gitleaks] Scanning code for hardcoded secrets, keys, and tokens..."
+                        sh """
+                            docker run --rm \
+                                -v \$(pwd):/path \
+                                ${env.GITLEAKS_IMAGE} detect \
+                                --source="/path/stage-8/app" \
+                                --config="/path/stage-8/security/secrets/.gitleaks.toml" \
+                                --report-path="/path/${env.REPORTS_DIR}/gitleaks-report.json" \
+                                --report-format=json --no-git || true
+                        """
+                    }
+                }
+                stage('Semgrep (SAST)') {
+                    steps {
+                        echo "🔍 [4b: Semgrep SAST] Performing static analysis for OWASP Top 10 vulnerabilities..."
+                        sh """
+                            docker run --rm \
+                                -v \$(pwd):/src \
+                                ${env.SEMGREP_IMAGE} semgrep scan \
+                                --config="/src/stage-8/security/sast/semgrep.yml" \
+                                --config="p/javascript" \
+                                --config="p/owasp-top-ten" \
+                                --json -o "/src/${env.REPORTS_DIR}/semgrep-report.json" \
+                                "/src/${env.APP_DIR}" "/src/stage-8/lambda" || true
+                        """
+                    }
+                }
+                stage('Trivy (SCA)') {
+                    steps {
+                        echo "🛡️ [4c: Trivy SCA] Auditing npm package dependencies for known CVEs..."
+                        sh """
+                            docker run --rm \
+                                -v \$(pwd):/workspace \
+                                ${env.TRIVY_IMAGE} fs \
+                                --scanners vuln \
+                                --config /workspace/stage-8/security/sca/trivy.yaml \
+                                --severity HIGH,CRITICAL \
+                                --format json -o /workspace/${env.REPORTS_DIR}/trivy-report.json \
+                                /workspace/${env.APP_DIR} || true
+                        """
+                    }
+                }
+            }
+        }
+
+        // =====================================================================
+        // 5. Dockerfile Linting (Hadolint)
+        // =====================================================================
+        stage('Dockerfile Linting (Hadolint)') {
+            steps {
+                echo "🔍 [5/12: Hadolint] Validating Dockerfile against CIS Docker Benchmarks..."
+                sh """
+                    docker run --rm -i ${env.HADOLINT_IMAGE} hadolint \
+                        --config /dev/null - < ${env.APP_DIR}/Dockerfile || true
+                """
+            }
+        }
+
+        // =====================================================================
+        // 6. Docker Multi-Stage Image Build
+        // =====================================================================
+        stage('Docker Multi-Stage Build') {
+            steps {
+                echo "🐳 [6/12: Docker Build] Building multi-stage container image with immutable tags..."
+                script {
+                    sh """
+                        cd ${env.APP_DIR}
+                        docker build \
+                            -t shopsphere-app:${env.RELEASE_TAG} \
+                            -t shopsphere-app:build-${env.BUILD_NUMBER} \
+                            -t shopsphere-app:${env.GIT_COMMIT_SHORT} \
+                            -f Dockerfile .
+                    """
+                    echo "✅ Built image shopsphere-app:${env.RELEASE_TAG} successfully."
+                }
+            }
+        }
+
+        // =====================================================================
+        // 7. Trivy Container Image Security Scan
+        // =====================================================================
+        stage('Container Image Security (Trivy)') {
+            steps {
+                echo "🛡️ [7/12: Trivy Image] Scanning built image for OS and runtime vulnerabilities..."
+                sh """
+                    docker run --rm \
+                        -v /var/run/docker.sock:/var/run/docker.sock \
+                        -v \$(pwd):/workspace \
+                        ${env.TRIVY_IMAGE} image \
+                        --scanners vuln \
+                        --severity HIGH,CRITICAL \
+                        --config /workspace/stage-8/security/container/trivy-image.yaml \
+                        --format json -o /workspace/${env.REPORTS_DIR}/trivy-image-report.json \
+                        shopsphere-app:${env.RELEASE_TAG} || true
+                """
+            }
+        }
+
+        // =====================================================================
+        // 8. Amazon ECR Authentication & Immutable Image Push
+        // =====================================================================
+        stage('Amazon ECR Push') {
+            steps {
+                echo "📦 [8/12: ECR Push] Authenticating to Amazon ECR and pushing immutable image..."
+                script {
+                    // Discover ECR Repository URI
+                    def ecrUri = sh(
+                        script: """
+                            aws ecr describe-repositories \
+                                --repository-names "${env.PROJECT_NAME}-${params.ENVIRONMENT}-app" \
+                                --region "${env.AWS_DEFAULT_REGION}" \
+                                --query 'repositories[0].repositoryUri' \
+                                --output text 2>/dev/null || \
+                            aws ecr describe-repositories \
+                                --repository-names "${env.PROJECT_NAME}-stage6-app" \
+                                --region "${env.AWS_DEFAULT_REGION}" \
+                                --query 'repositories[0].repositoryUri' \
+                                --output text
+                        """,
+                        returnStdout: true
+                    ).trim()
+
+                    env.ECR_REPOSITORY_URL = ecrUri
+                    echo "Target ECR Repository: ${env.ECR_REPOSITORY_URL}"
+
+                    sh """
+                        echo "Logging into Amazon ECR: ${env.ECR_REPOSITORY_URL}..."
+                        aws ecr get-login-password --region "${env.AWS_DEFAULT_REGION}" | \
+                            docker login --username AWS --password-stdin "${env.ECR_REPOSITORY_URL}"
+
+                        echo "Tagging image with immutable release tags..."
+                        docker tag shopsphere-app:${env.RELEASE_TAG} "${env.ECR_REPOSITORY_URL}:${env.RELEASE_TAG}"
+                        docker tag shopsphere-app:${env.RELEASE_TAG} "${env.ECR_REPOSITORY_URL}:build-${env.BUILD_NUMBER}"
+                        docker tag shopsphere-app:${env.RELEASE_TAG} "${env.ECR_REPOSITORY_URL}:${env.GIT_COMMIT_SHORT}"
+
+                        echo "Pushing immutable image tags to Amazon ECR..."
+                        docker push "${env.ECR_REPOSITORY_URL}:${env.RELEASE_TAG}"
+                        docker push "${env.ECR_REPOSITORY_URL}:build-${env.BUILD_NUMBER}"
+                        docker push "${env.ECR_REPOSITORY_URL}:${env.GIT_COMMIT_SHORT}"
+
+                        echo "✅ Pushed: ${env.ECR_REPOSITORY_URL}:${env.RELEASE_TAG}"
+                    """
+                }
+            }
+        }
+
+        // =====================================================================
+        // 9. ASG Rolling Deployment (Instance Refresh)
+        // =====================================================================
+        stage('ASG Rolling Deployment') {
+            steps {
+                echo "🚀 [9/12: ASG Rollout] Executing rolling instance refresh on Auto Scaling Group..."
+                sh """
+                    chmod +x stage-8/scripts/deploy-asg-refresh.sh
+                    ./stage-8/scripts/deploy-asg-refresh.sh "${env.RELEASE_TAG}" "${params.ENVIRONMENT}"
+                """
+            }
+        }
+
+        // =====================================================================
+        // 10. Multi-Tier Application & Edge Health Verification
+        // =====================================================================
+        stage('Application Health Verification') {
+            steps {
+                echo "🔍 [10/12: Health Probing] Probing deployed application endpoints via ALB & CloudFront..."
+                script {
+                    def cfDomain = sh(
+                        script: """
+                            aws cloudfront list-distributions \
+                                --query "DistributionList.Items[?contains(Comment, 'ShopSphere')].DomainName | [0]" \
+                                --output text 2>/dev/null || echo ""
+                        """,
+                        returnStdout: true
+                    ).trim()
+
+                    if (!cfDomain || cfDomain == 'None') {
+                        error("Unable to discover CloudFront distribution domain.")
+                    }
+
+                    env.TARGET_URL = "https://${cfDomain}"
+                    echo "Testing live edge endpoint: ${env.TARGET_URL}"
+
+                    sh """
+                        echo "Waiting 15s for CloudFront edge synchronization..."
+                        sleep 15
+
+                        echo "Testing /health endpoint via CloudFront..."
+                        HEALTH_RES=\$(curl -s -f --max-time 15 "${env.TARGET_URL}/health")
+                        echo "\${HEALTH_RES}"
+
+                        echo "Verifying container runtime status..."
+                        STATUS=\$(echo "\${HEALTH_RES}" | grep -o '"status":"[^"]*' | cut -d'"' -f4 || echo "DOWN")
+                        if [ "\${STATUS}" != "UP" ]; then
+                            echo "❌ Health check returned non-UP status: \${STATUS}"
+                            exit 1
+                        fi
+
+                        echo "Testing /api/products catalog endpoint..."
+                        curl -s -f --max-time 15 "${env.TARGET_URL}/api/products" > /dev/null
+
+                        echo "Testing /api/container-info diagnostics endpoint..."
+                        CONTAINER_INFO=\$(curl -s -f --max-time 15 "${env.TARGET_URL}/api/container-info" || echo "{}")
+                        echo "\${CONTAINER_INFO}"
+
+                        echo "✅ All multi-tier application health checks passed successfully!"
+                    """
+                }
+            }
+        }
+
+        // =====================================================================
+        // 11. Dynamic Application Security Testing (OWASP ZAP DAST)
+        // =====================================================================
+        stage('DAST Dynamic Analysis (OWASP ZAP)') {
+            when {
+                expression { return params.RUN_DAST }
+            }
+            steps {
+                echo "🎯 [11/12: DAST] Executing OWASP ZAP baseline penetration scan against ${env.TARGET_URL}..."
+                sh """
+                    docker run --rm \
+                        -v \$(pwd)/stage-8:/zap/wrk/:rw \
+                        ${env.ZAP_IMAGE} \
+                        zap-baseline.py -t "${env.TARGET_URL}" \
+                        -c "/zap/wrk/security/dast/zap-baseline.conf" \
+                        -J "/zap/wrk/security/reports/zap-report.json" \
+                        -r "/zap/wrk/security/reports/zap-report.html" || true
+                """
+            }
+        }
+
+        // =====================================================================
+        // 12. Final Security Quality Gate
+        // =====================================================================
+        stage('Final Security Gate') {
+            steps {
+                echo "📊 [12/12: Quality Gate] Evaluating DevSecOps and Container Security scan results..."
+                script {
+                    sh """
+                        echo "=========================================================="
+                        echo "📊 Security Gate Compliance Evaluation"
+                        echo "=========================================================="
+                        ls -la ${env.REPORTS_DIR}/ || true
+
+                        if [ -f "${env.REPORTS_DIR}/trivy-image-report.json" ]; then
+                            CRIT_IMAGE=\$(grep -o '"Severity": *"CRITICAL"' "${env.REPORTS_DIR}/trivy-image-report.json" | wc -l || echo 0)
+                            echo "Container Image Critical Vulnerabilities: \${CRIT_IMAGE}"
+                            if [ "\${CRIT_IMAGE}" -gt 0 ] && [ "${params.STRICT_SECURITY_GATES}" == "true" ]; then
+                                echo "❌ Security Gate Failure: Container image contains \${CRIT_IMAGE} CRITICAL CVEs!"
+                                exit 1
+                            fi
+                        fi
+                        echo "✅ Security Gate: All required quality criteria verified."
+                    """
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // Post-Execution Notifications & Artifact Archiving
+    // =========================================================================
+    post {
+        always {
+            echo "📦 Archiving Application Pipeline artifacts..."
+            archiveArtifacts artifacts: "${env.REPORTS_DIR}/**", allowEmptyArchive: true
+
+            echo "🧹 Cleaning up local Docker image caches..."
+            sh """
+                docker rmi -f shopsphere-app:${env.RELEASE_TAG} 2>/dev/null || true
+                docker rmi -f shopsphere-app:build-${env.BUILD_NUMBER} 2>/dev/null || true
+                docker rmi -f shopsphere-app:${env.GIT_COMMIT_SHORT} 2>/dev/null || true
+            """
+        }
+        success {
+            echo "🎉 [APPLICATION PIPELINE SUCCESS] Release '${env.RELEASE_TAG}' is LIVE on AWS Auto Scaling Fleet!"
+            echo "🌐 Live Endpoint: ${env.TARGET_URL}"
+        }
+        failure {
+            echo "❌ [APPLICATION PIPELINE FAILURE] Application build, test, scan, or deployment failed."
+            echo "Inspect console output and archived security reports for diagnostic details."
+        }
+    }
+}

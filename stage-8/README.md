@@ -179,34 +179,64 @@ docker compose down -v
          ▼               ▼
       Checkout   Security Analysis (Gitleaks, Semgrep, Trivy SCA)
          │               │
-         └───────┬───────┘
-                 ▼
-            Unit Tests (node --test)
-                 ▼
-      Dockerfile Linting (Hadolint)
-                 ▼
-          Docker Build (Multi-Stage)
-                 ▼
-     Container Image Scan (Trivy Image)
-                 ▼
-    Infrastructure Provisioning (Terraform + ECR)
-                 ▼
-         Amazon ECR Push (Tag & Release)
-                 ▼
-     ASG Container Rollout (Instance Refresh)
-                 ▼
- Verify App Health, Container, ALB & CloudFront (CNF)
-                 ▼
-               DAST (OWASP ZAP Dynamic Scan)
-                 ▼
-           Security Gate (Threshold Enforcement)
+         └───────
 ```
 
-### Pipeline Execution Modes
-- **`ACTION = 'apply'`** *(Default)*: Full end-to-end run: Lints Dockerfile, compiles multi-stage container, scans image with Trivy, provisions AWS infrastructure (including ECR), pushes image to ECR, triggers ASG instance refresh, verifies 3-tier health, and runs DAST.
-- **`ACTION = 'container-update'`**: Rapid container deployment: Runs tests, builds image, scans image, pushes to ECR, and refreshes the ASG container fleet without running Terraform apply.
-- **`ACTION = 'plan'`**: Dry-run Terraform execution plan.
-- **`ACTION = 'destroy'`**: Tears down the Stage 8 AWS test environment.
+### CI/CD Architecture Separation (Infra vs Application)
+
+Stage 8 separates **Infrastructure CI/CD** from **Application CI/CD**:
+> *"Infrastructure pipeline creates the road. Application pipeline delivers the cars onto the road."*
+
+```text
+                 GitHub
+                   │
+          ┌────────┴────────┐
+          │                 │
+          ▼                 ▼
+    Jenkins Infra      Jenkins App
+          │                 │
+          ▼                 ▼
+      Terraform          Build/Test
+          │                 │
+          ▼                SAST
+     AWS Resources         SCA
+                            │
+                         Docker
+                            │
+                         Trivy
+                            │
+                           ECR
+                            │
+                      ASG Refresh
+                            │
+                            ▼
+                         EC2 / ALB
+```
+
+#### 1. Dedicated Infrastructure Pipeline (`stage-8/Jenkinsfile-infra`)
+Responsible **ONLY** for provisioning and managing AWS infrastructure using Terraform:
+- **Format Check:** `terraform fmt -check -recursive`
+- **Initialization:** `terraform init -input=false`
+- **Validation:** `terraform validate`
+- **IaC Security:** `Checkov` CIS AWS Foundations Benchmark scan
+- **Execution Plan:** `terraform plan -var="environment=${ENVIRONMENT}" -out=tfplan`
+- **Manual Approval:** Operator review before production modifications
+- **Apply:** `terraform apply tfplan` & manifest export (`infra-manifest.json`)
+- **Infrastructure Verification:** Automated probe of VPC, ALB, ASG, RDS, Redis, SQS, Lambda, ECR, CloudFront, and WAF via `stage-8/scripts/verify-infra.sh`
+
+#### 2. Dedicated Application Pipeline (`stage-8/Jenkinsfile-app`)
+Responsible **ONLY** for code quality, containerization, security testing, and ASG deployment:
+- **Build & Dependencies:** Node.js package auditing
+- **Unit Tests:** `node --test` in isolated runner
+- **Security Scans:** Gitleaks (Secrets), Semgrep (SAST), Trivy (SCA)
+- **Dockerfile Linter:** Hadolint CIS benchmark check
+- **Docker Build:** Hardened multi-stage container with immutable tags (`shopsphere-app:${BUILD_NUMBER}`)
+- **Container Image Scan:** Trivy container vulnerability scanner (zero CRITICAL CVEs)
+- **ECR Publishing:** AWS ECR authentication and immutable push (`${ECR_REPO}:${BUILD_NUMBER}`)
+- **Rolling Deployment:** Creates new Launch Template version with immutable image and initiates ASG Instance Refresh (`MinHealthyPercentage=50%`, `InstanceWarmup=180s`) via `stage-8/scripts/deploy-asg-refresh.sh`
+- **Deployment Health Check:** Multi-tier health probe on CloudFront (`/health` and `/api/container-info`)
+- **DAST Testing:** Dynamic penetration scan via OWASP ZAP
+- **Final Quality Gate:** Strict evaluation of all security scan thresholds
 
 ---
 

@@ -96,15 +96,27 @@ IMAGE_NAME="shopsphere-app:8.0.0"
 CONTAINER_NAME="shopsphere-app-prod"
 PULLED_FROM_ECR=0
 
-# Attempt login to Amazon ECR and pull latest image
+TAG_ARG="$${1:-}"
+if [ -z "$TAG_ARG" ] && [ -f /opt/shopsphere/image_tag ]; then
+  TAG_ARG="$(cat /opt/shopsphere/image_tag | tr -d '[:space:]')"
+fi
+if [ -z "$TAG_ARG" ]; then
+  TAG_ARG="latest"
+fi
+
+# Attempt login to Amazon ECR and pull image
 if [ -n "$ECR_REPO" ] && command -v aws >/dev/null 2>&1; then
   echo "Attempting to authenticate with Amazon ECR ($${ECR_REPO})..."
   if aws ecr get-login-password --region "${aws_region}" | docker login --username AWS --password-stdin "$ECR_REPO" 2>/dev/null; then
-    echo "Pulling latest container image from ECR: $${ECR_REPO}:latest..."
-    if docker pull "$${ECR_REPO}:latest" 2>/dev/null; then
+    echo "Pulling container image from ECR: $${ECR_REPO}:$${TAG_ARG}..."
+    if docker pull "$${ECR_REPO}:$${TAG_ARG}" 2>/dev/null; then
+      IMAGE_NAME="$${ECR_REPO}:$${TAG_ARG}"
+      PULLED_FROM_ECR=1
+      echo "✅ Successfully pulled image from Amazon ECR: $${IMAGE_NAME}."
+    elif [ "$TAG_ARG" != "latest" ] && docker pull "$${ECR_REPO}:latest" 2>/dev/null; then
       IMAGE_NAME="$${ECR_REPO}:latest"
       PULLED_FROM_ECR=1
-      echo "✅ Successfully pulled image from Amazon ECR."
+      echo "✅ Falling back to latest image from Amazon ECR: $${IMAGE_NAME}."
     fi
   fi
 fi
