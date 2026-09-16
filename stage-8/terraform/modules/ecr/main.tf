@@ -17,9 +17,9 @@ resource "aws_ecr_repository" "app" {
   tags = merge(
     var.tags,
     {
-      Name        = local.repo_name
-      Stage       = "Stage-8"
-      Component   = "ContainerRegistry"
+      Name      = local.repo_name
+      Stage     = "Stage-8"
+      Component = "ContainerRegistry"
     }
   )
 }

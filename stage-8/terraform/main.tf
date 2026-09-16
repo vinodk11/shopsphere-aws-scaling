@@ -214,16 +214,16 @@ module "asg" {
   root_volume_size          = var.root_volume_size
 
   user_data = templatefile("${path.module}/scripts/user_data.sh.tpl", {
-    db_host        = module.rds.db_instance_address
-    db_port        = module.rds.db_instance_port
-    db_name        = var.db_name
-    db_user        = var.db_user
-    db_password    = var.db_password
-    redis_host     = module.elasticache.redis_endpoint
-    redis_port     = module.elasticache.redis_port
-    aws_region     = var.aws_region
-    sqs_queue_url  = module.sqs.queue_url
-    sqs_queue_name = module.sqs.queue_name
+    db_host            = module.rds.db_instance_address
+    db_port            = module.rds.db_instance_port
+    db_name            = var.db_name
+    db_user            = var.db_user
+    db_password        = var.db_password
+    redis_host         = module.elasticache.redis_endpoint
+    redis_port         = module.elasticache.redis_port
+    aws_region         = var.aws_region
+    sqs_queue_url      = module.sqs.queue_url
+    sqs_queue_name     = module.sqs.queue_name
     app_port           = var.app_port
     app_repo_url       = var.app_repo_url
     ecr_repository_url = module.ecr.repository_url
