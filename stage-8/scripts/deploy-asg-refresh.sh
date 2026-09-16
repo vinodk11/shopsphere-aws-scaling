@@ -127,13 +127,13 @@ echo -e "${GREEN}Auto Scaling Group updated successfully.${NC}"
 echo -e "\n${BLUE}▶ [Step 5/5] Starting rolling Instance Refresh on ${ASG_NAME}...${NC}"
 REFRESH_ID=$(aws autoscaling start-instance-refresh \
     --auto-scaling-group-name "${ASG_NAME}" \
-    --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 180, "AutoRollback": true}' \
+    --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 180}' \
     --region "${AWS_REGION}" \
     --query 'InstanceRefreshId' \
     --output text)
 
 echo -e "${GREEN}Instance Refresh Started (ID: ${REFRESH_ID})${NC}"
-echo "Rolling replacement configuration: MinHealthyPercentage=50%, InstanceWarmup=180s, AutoRollback=true"
+echo "Rolling replacement configuration: MinHealthyPercentage=50%, InstanceWarmup=180s"
 echo "Polling instance refresh status every ${POLL_INTERVAL}s (Timeout: ${MAX_WAIT_MINUTES}m)..."
 
 START_TIME=$(date +%s)
