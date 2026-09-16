@@ -336,7 +336,7 @@ pipeline {
                         echo "\${HEALTH_RES}"
 
                         echo "Verifying container runtime status..."
-                        STATUS=\$(echo "\${HEALTH_RES}" | grep -o '"status":"[^"]*' | cut -d'"' -f4 || echo "DOWN")
+                        STATUS=\$(echo "\${HEALTH_RES}" | grep -o '"status":"[^"]*' | head -n 1 | cut -d'"' -f4 || echo "DOWN")
                         if [ "\${STATUS}" != "UP" ]; then
                             echo "❌ Health check returned non-UP status: \${STATUS}"
                             exit 1
