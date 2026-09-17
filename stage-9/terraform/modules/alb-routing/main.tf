@@ -130,7 +130,7 @@ resource "aws_lb_listener_rule" "product_service" {
 
   # If CloudFront header verification is enabled, also enforce header condition
   dynamic "condition" {
-    for_each = var.custom_header_name != "" ? [1] : []
+    for_each = var.custom_header_name != "" && var.custom_header_value != "" ? [1] : []
     content {
       http_header {
         http_header_name = var.custom_header_name
@@ -169,7 +169,7 @@ resource "aws_lb_listener_rule" "order_service" {
   }
 
   dynamic "condition" {
-    for_each = var.custom_header_name != "" ? [1] : []
+    for_each = var.custom_header_name != "" && var.custom_header_value != "" ? [1] : []
     content {
       http_header {
         http_header_name = var.custom_header_name
@@ -213,9 +213,15 @@ resource "aws_lb_listener_rule" "blue_green_weighted" {
     }
   }
 
-  # Match CloudFront custom verification header to ensure traffic came through edge
+  condition {
+    path_pattern {
+      values = ["/*"]
+    }
+  }
+
+  # Match CloudFront custom verification header if provided
   dynamic "condition" {
-    for_each = var.custom_header_name != "" ? [1] : []
+    for_each = var.custom_header_name != "" && var.custom_header_value != "" ? [1] : []
     content {
       http_header {
         http_header_name = var.custom_header_name

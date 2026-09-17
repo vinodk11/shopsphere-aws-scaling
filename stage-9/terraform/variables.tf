@@ -76,7 +76,7 @@ variable "sqs_queue_arn" {
 variable "custom_header_name" {
   description = "Header name for CloudFront origin verification (matches Stage 8)"
   type        = string
-  default     = "X-Origin-Verify"
+  default     = ""
 }
 
 variable "custom_header_value" {
