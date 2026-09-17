@@ -262,12 +262,12 @@ pipeline {
             steps {
                 echo "🔀 [9/11: Traffic Shift] Applying selected traffic distribution: ${params.MIGRATION_WEIGHT}..."
                 script {
-                    chmod(file: 'stage-9/scripts/migrate-traffic.sh', mask: '755')
                     def weights = params.MIGRATION_WEIGHT.split(' ')[0].split('-')
                     def blue = weights[0]
                     def green = weights[1]
 
                     sh """
+                        chmod +x stage-9/scripts/migrate-traffic.sh
                         ./stage-9/scripts/migrate-traffic.sh weight "${blue}" "${green}"
 
                         if [ "${params.ENABLE_PATH_ROUTING}" == "true" ]; then
