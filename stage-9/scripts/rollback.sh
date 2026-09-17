@@ -30,47 +30,54 @@ ALB_LISTENER_ARN=$(aws elbv2 describe-listeners --region "${AWS_REGION}" \
     --load-balancer-arn "$(aws elbv2 describe-load-balancers --region "${AWS_REGION}" --query "LoadBalancers[?contains(LoadBalancerName, '${PROJECT_NAME}-stage8-alb')].LoadBalancerArn | [0]" --output text)" \
     --query "Listeners[0].ListenerArn" --output text 2>/dev/null || echo "")
 
-RULE_ARN=$(aws elbv2 describe-rules --listener-arn "${ALB_LISTENER_ARN}" --region "${AWS_REGION}" \
+RULE_10_ARN=$(aws elbv2 describe-rules --listener-arn "${ALB_LISTENER_ARN}" --region "${AWS_REGION}" \
+    --query "Rules[?Priority=='10'].RuleArn | [0]" --output text 2>/dev/null || echo "")
+
+RULE_15_ARN=$(aws elbv2 describe-rules --listener-arn "${ALB_LISTENER_ARN}" --region "${AWS_REGION}" \
     --query "Rules[?Priority=='15'].RuleArn | [0]" --output text 2>/dev/null || echo "")
+
+RULE_PROD_ARN=$(aws elbv2 describe-rules --listener-arn "${ALB_LISTENER_ARN}" --region "${AWS_REGION}" \
+    --query "Rules[?Priority=='5'].RuleArn | [0]" --output text 2>/dev/null || echo "")
+
+RULE_ORD_ARN=$(aws elbv2 describe-rules --listener-arn "${ALB_LISTENER_ARN}" --region "${AWS_REGION}" \
+    --query "Rules[?Priority=='6'].RuleArn | [0]" --output text 2>/dev/null || echo "")
 
 if [ -z "${STAGE8_TG_ARN}" ] || [ "${STAGE8_TG_ARN}" == "None" ]; then
     echo -e "${RED}❌ Fatal: Stage 8 Target Group not found! Cannot execute automated rollback.${NC}"
     exit 1
 fi
 
-# 2. Reset Weighted Rule: 100% Blue, 0% Green
-if [ -n "${RULE_ARN}" ] && [ "${RULE_ARN}" != "None" ]; then
-    echo -e "\n${YELLOW}▶ Resetting ALB Listener Rule (Priority 15) to 100% Blue / 0% Green...${NC}"
+# 2. Reset Primary Weighted Rule (Priority 10): 100% Blue, 0% Green
+if [ -n "${RULE_10_ARN}" ] && [ "${RULE_10_ARN}" != "None" ]; then
+    echo -e "\n${YELLOW}▶ Resetting Primary ALB Listener Rule (Priority 10) to 100% Blue / 0% Green...${NC}"
     aws elbv2 modify-rule \
-        --rule-arn "${RULE_ARN}" \
+        --rule-arn "${RULE_10_ARN}" \
         --region "${AWS_REGION}" \
         --actions "Type=forward,ForwardConfig={TargetGroups=[{TargetGroupArn=${STAGE8_TG_ARN},Weight=100},{TargetGroupArn=${STAGE9_TG_ARN},Weight=0}]}"
-    echo -e "${GREEN}✅ Blue/Green weighted rule reset to 100% Stage 8.${NC}"
+    echo -e "${GREEN}✅ Primary CloudFront rule reset to 100% Stage 8.${NC}"
+fi
+
+# Reset Rule 15 if present
+if [ -n "${RULE_15_ARN}" ] && [ "${RULE_15_ARN}" != "None" ]; then
+    echo -e "\n${YELLOW}▶ Resetting ALB Listener Rule (Priority 15) to 100% Blue / 0% Green...${NC}"
+    aws elbv2 modify-rule \
+        --rule-arn "${RULE_15_ARN}" \
+        --region "${AWS_REGION}" \
+        --actions "Type=forward,ForwardConfig={TargetGroups=[{TargetGroupArn=${STAGE8_TG_ARN},Weight=100},{TargetGroupArn=${STAGE9_TG_ARN},Weight=0}]}"
+    echo -e "${GREEN}✅ Priority 15 rule reset to 100% Stage 8.${NC}"
 fi
 
 # 3. Disable path rules if any were active
-PRODUCT_RULE_ARN=$(aws elbv2 describe-rules --listener-arn "${ALB_LISTENER_ARN}" --region "${AWS_REGION}" \
-    --query "Rules[?Priority=='20'].RuleArn | [0]" --output text 2>/dev/null || echo "")
-
-if [ -n "${PRODUCT_RULE_ARN}" ] && [ "${PRODUCT_RULE_ARN}" != "None" ]; then
-    echo -e "\n${YELLOW}▶ Re-routing /api/products* back to Stage 8 Target Group...${NC}"
-    aws elbv2 modify-rule \
-        --rule-arn "${PRODUCT_RULE_ARN}" \
-        --region "${AWS_REGION}" \
-        --actions "Type=forward,TargetGroupArn=${STAGE8_TG_ARN}"
-    echo -e "${GREEN}✅ Product path routed to Stage 8.${NC}"
+if [ -n "${RULE_PROD_ARN}" ] && [ "${RULE_PROD_ARN}" != "None" ]; then
+    echo -e "\n${YELLOW}▶ Removing /api/products* microservice rule (Priority 5)...${NC}"
+    aws elbv2 delete-rule --rule-arn "${RULE_PROD_ARN}" --region "${AWS_REGION}"
+    echo -e "${GREEN}✅ Product path routed back to Stage 8 Monolith.${NC}"
 fi
 
-ORDER_RULE_ARN=$(aws elbv2 describe-rules --listener-arn "${ALB_LISTENER_ARN}" --region "${AWS_REGION}" \
-    --query "Rules[?Priority=='25'].RuleArn | [0]" --output text 2>/dev/null || echo "")
-
-if [ -n "${ORDER_RULE_ARN}" ] && [ "${ORDER_RULE_ARN}" != "None" ]; then
-    echo -e "\n${YELLOW}▶ Re-routing /api/orders* back to Stage 8 Target Group...${NC}"
-    aws elbv2 modify-rule \
-        --rule-arn "${ORDER_RULE_ARN}" \
-        --region "${AWS_REGION}" \
-        --actions "Type=forward,TargetGroupArn=${STAGE8_TG_ARN}"
-    echo -e "${GREEN}✅ Order path routed to Stage 8.${NC}"
+if [ -n "${RULE_ORD_ARN}" ] && [ "${RULE_ORD_ARN}" != "None" ]; then
+    echo -e "\n${YELLOW}▶ Removing /api/orders* microservice rule (Priority 6)...${NC}"
+    aws elbv2 delete-rule --rule-arn "${RULE_ORD_ARN}" --region "${AWS_REGION}"
+    echo -e "${GREEN}✅ Order path routed back to Stage 8 Monolith.${NC}"
 fi
 
 # 4. Verify Stage 8 Target Group Health
