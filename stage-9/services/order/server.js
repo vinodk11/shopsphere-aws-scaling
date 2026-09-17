@@ -27,7 +27,8 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD || 'password',
   max: 10,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 3000
+  connectionTimeoutMillis: 3000,
+  ssl: (process.env.DB_SSL === 'true' || process.env.NODE_ENV === 'production') ? { rejectUnauthorized: false } : false
 });
 
 // AWS SQS Client (Uses IRSA token mounted at /var/run/secrets/eks.amazonaws.com/serviceaccount/token)

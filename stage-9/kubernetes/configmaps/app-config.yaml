@@ -10,8 +10,9 @@ data:
   NODE_ENV: "production"
   AWS_REGION: "us-east-1"
   DB_PORT: "5432"
-  DB_NAME: "shopsphere"
+  DB_NAME: "shopspheredb"
   DB_USER: "shopsphere_user"
+  DB_SSL: "true"
   REDIS_PORT: "6379"
   # In production, these are injected dynamically by Terraform / deploy script
   DB_HOST: "shopsphere-stage8-postgres.cy9mak0su1oj.us-east-1.rds.amazonaws.com"

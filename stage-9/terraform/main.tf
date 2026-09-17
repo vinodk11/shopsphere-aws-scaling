@@ -79,6 +79,32 @@ locals {
   sqs_queue_arn = var.sqs_queue_arn != "" ? var.sqs_queue_arn : data.aws_sqs_queue.orders[0].arn
 }
 
+# Discover existing RDS Security Group
+data "aws_security_group" "rds" {
+  count = var.rds_security_group_id == "" ? 1 : 0
+  filter {
+    name   = "group-name"
+    values = ["${var.project_name}-*-rds-sg"]
+  }
+}
+
+locals {
+  rds_sg_id = var.rds_security_group_id != "" ? var.rds_security_group_id : data.aws_security_group.rds[0].id
+}
+
+# Discover existing Redis Security Group
+data "aws_security_group" "redis" {
+  count = var.redis_security_group_id == "" ? 1 : 0
+  filter {
+    name   = "group-name"
+    values = ["${var.project_name}-*-redis-sg"]
+  }
+}
+
+locals {
+  redis_sg_id = var.redis_security_group_id != "" ? var.redis_security_group_id : data.aws_security_group.redis[0].id
+}
+
 # ------------------------------------------------------------------------------
 # 2. EKS Control Plane Module
 # ------------------------------------------------------------------------------
@@ -106,8 +132,8 @@ module "node_group" {
   vpc_id                    = local.vpc_id
   subnet_ids                = local.subnet_ids
   alb_security_group_id     = local.alb_sg
-  rds_security_group_id     = var.rds_security_group_id
-  redis_security_group_id   = var.redis_security_group_id
+  rds_security_group_id     = local.rds_sg_id
+  redis_security_group_id   = local.redis_sg_id
   instance_types            = var.instance_types
   kubernetes_version        = var.kubernetes_version
   desired_capacity          = var.desired_capacity

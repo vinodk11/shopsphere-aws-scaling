@@ -51,9 +51,11 @@ kubectl apply -f stage-9/kubernetes/user-service/
 # Update image tags if provided
 if [ "${IMAGE_TAG}" != "latest" ]; then
     echo "Updating deployments to immutable image tag: ${IMAGE_TAG}"
-    kubectl set image deployment/product-service product="*:${IMAGE_TAG}" -n "${NAMESPACE}" || true
-    kubectl set image deployment/order-service order="*:${IMAGE_TAG}" -n "${NAMESPACE}" || true
-    kubectl set image deployment/user-service user="*:${IMAGE_TAG}" -n "${NAMESPACE}" || true
+    ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+    ECR_PREFIX="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+    kubectl set image deployment/product-service product="${ECR_PREFIX}/shopsphere-stage9-product:${IMAGE_TAG}" -n "${NAMESPACE}" || true
+    kubectl set image deployment/order-service order="${ECR_PREFIX}/shopsphere-stage9-order:${IMAGE_TAG}" -n "${NAMESPACE}" || true
+    kubectl set image deployment/user-service user="${ECR_PREFIX}/shopsphere-stage9-user:${IMAGE_TAG}" -n "${NAMESPACE}" || true
 fi
 
 # 6. Wait for Rollout Status
