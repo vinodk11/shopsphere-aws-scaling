@@ -138,6 +138,7 @@ resource "aws_eks_node_group" "this" {
   node_group_name = "${var.project_name}-${var.environment}-managed-nodes"
   node_role_arn   = aws_iam_role.node.arn
   subnet_ids      = var.subnet_ids
+  version         = var.kubernetes_version
 
   scaling_config {
     desired_size = var.desired_capacity

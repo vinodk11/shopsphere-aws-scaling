@@ -21,7 +21,7 @@ variable "subnet_ids" {
 variable "kubernetes_version" {
   description = "Kubernetes control plane version"
   type        = string
-  default     = "1.30"
+  default     = "1.31"
 }
 
 variable "admin_cidr_blocks" {

@@ -93,7 +93,7 @@ variable "custom_header_value" {
 variable "kubernetes_version" {
   description = "Amazon EKS Kubernetes version"
   type        = string
-  default     = "1.30"
+  default     = "1.31"
 }
 
 variable "instance_types" {

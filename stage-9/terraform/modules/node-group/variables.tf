@@ -23,6 +23,12 @@ variable "vpc_id" {
   type        = string
 }
 
+variable "kubernetes_version" {
+  description = "Kubernetes version for managed worker nodes"
+  type        = string
+  default     = "1.31"
+}
+
 variable "subnet_ids" {
   description = "Subnet IDs for worker nodes across Multi-AZ"
   type        = list(string)

@@ -7,7 +7,7 @@ project_name = "shopsphere"
 environment  = "stage9"
 
 # Sizing
-kubernetes_version = "1.30"
+kubernetes_version = "1.31"
 instance_types     = ["t3.medium"]
 desired_capacity   = 2
 min_capacity       = 2

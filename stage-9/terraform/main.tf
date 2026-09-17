@@ -109,11 +109,14 @@ module "node_group" {
   rds_security_group_id     = var.rds_security_group_id
   redis_security_group_id   = var.redis_security_group_id
   instance_types            = var.instance_types
+  kubernetes_version        = var.kubernetes_version
   desired_capacity          = var.desired_capacity
   min_capacity              = var.min_capacity
   max_capacity              = var.max_capacity
   disk_size                 = var.disk_size
   tags                      = var.tags
+
+  depends_on = [module.eks]
 }
 
 # ------------------------------------------------------------------------------
