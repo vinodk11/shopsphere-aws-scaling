@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: shopsphere-monolith-service
+  namespace: shopsphere-stage9
+  labels:
+    app: shopsphere-monolith
+    stage: "stage-9"
+spec:
+  type: NodePort
+  selector:
+    app: shopsphere-monolith
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: 30080

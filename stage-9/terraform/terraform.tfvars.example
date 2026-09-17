@@ -1,0 +1,23 @@
+# ==============================================================================
+# Stage 9 Terraform Variables Example
+# ==============================================================================
+
+aws_region   = "us-east-1"
+project_name = "shopsphere"
+environment  = "stage9"
+
+# Sizing
+kubernetes_version = "1.30"
+instance_types     = ["t3.medium"]
+desired_capacity   = 2
+min_capacity       = 2
+max_capacity       = 4
+disk_size          = 30
+
+# Initial Traffic Distribution (100% Blue / Stage 8, 0% Green / Stage 9)
+blue_weight  = 100
+green_weight = 0
+
+# Path-based routing triggers (enable when microservices are validated)
+enable_product_path_routing = false
+enable_order_path_routing   = false

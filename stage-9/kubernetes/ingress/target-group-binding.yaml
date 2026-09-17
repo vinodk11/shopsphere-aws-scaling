@@ -1,0 +1,40 @@
+# ==============================================================================
+# TargetGroupBinding Manifests - Stage 9 AWS Load Balancer Controller
+# Binds EKS Microservices directly to the ALB Target Groups managed by Terraform
+# ==============================================================================
+
+# 1. Monolith Compatibility Target Group Binding
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: TargetGroupBinding
+metadata:
+  name: monolith-tgb
+  namespace: shopsphere-stage9
+spec:
+  serviceRef:
+    name: shopsphere-monolith-service
+    port: 8080
+  targetGroupARN: "arn:aws:elasticloadbalancing:us-east-1:165772574557:targetgroup/shopsphere-stage9-eks-mono-tg"
+---
+# 2. Product Service Target Group Binding
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: TargetGroupBinding
+metadata:
+  name: product-service-tgb
+  namespace: shopsphere-stage9
+spec:
+  serviceRef:
+    name: product-service
+    port: 8081
+  targetGroupARN: "arn:aws:elasticloadbalancing:us-east-1:165772574557:targetgroup/shopsphere-stage9-eks-prod-tg"
+---
+# 3. Order Service Target Group Binding
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: TargetGroupBinding
+metadata:
+  name: order-service-tgb
+  namespace: shopsphere-stage9
+spec:
+  serviceRef:
+    name: order-service
+    port: 8082
+  targetGroupARN: "arn:aws:elasticloadbalancing:us-east-1:165772574557:targetgroup/shopsphere-stage9-eks-ord-tg"

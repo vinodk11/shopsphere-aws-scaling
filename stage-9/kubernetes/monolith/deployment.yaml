@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shopsphere-monolith
+  namespace: shopsphere-stage9
+  labels:
+    app: shopsphere-monolith
+    stage: "stage-9"
+    tier: monolith-compatibility
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: shopsphere-monolith
+  template:
+    metadata:
+      labels:
+        app: shopsphere-monolith
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: monolith
+          # Image replaced dynamically by CI/CD pipeline with immutable ECR tag
+          image: 165772574557.dkr.ecr.us-east-1.amazonaws.com/shopsphere-stage8-app:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: shopsphere-common-config
+          env:
+            - name: PORT
+              value: "8080"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shopsphere-db-credentials
+                  key: DB_PASSWORD
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            successThreshold: 1
+            failureThreshold: 2
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 10

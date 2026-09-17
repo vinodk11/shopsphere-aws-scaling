@@ -1,0 +1,161 @@
+# ==============================================================================
+# Variables — Stage 9 (EKS Cluster + Microservices Progressive Migration)
+# ==============================================================================
+
+variable "aws_region" {
+  description = "Target AWS deployment region"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "project_name" {
+  description = "Project name identifier used for resource naming"
+  type        = string
+  default     = "shopsphere"
+}
+
+variable "environment" {
+  description = "Deployment environment name"
+  type        = string
+  default     = "stage9"
+}
+
+# ------------------------------------------------------------------------------
+# Existing Stage 8 Infrastructure References
+# (Auto-discovered via data sources by default, or manually overridable)
+# ------------------------------------------------------------------------------
+
+variable "vpc_id" {
+  description = "Existing Stage 8 VPC ID. If omitted, discovered automatically via tags"
+  type        = string
+  default     = ""
+}
+
+variable "subnet_ids" {
+  description = "List of existing public/private subnets across Multi-AZ for EKS. If empty, auto-discovered"
+  type        = list(string)
+  default     = []
+}
+
+variable "alb_arn" {
+  description = "ARN of the existing Application Load Balancer. If empty, auto-discovered via tags"
+  type        = string
+  default     = ""
+}
+
+variable "alb_listener_arn" {
+  description = "ARN of the existing ALB HTTP Listener. If empty, auto-discovered"
+  type        = string
+  default     = ""
+}
+
+variable "stage8_target_group_arn" {
+  description = "ARN of the existing Stage 8 EC2 ASG Target Group. If empty, auto-discovered"
+  type        = string
+  default     = ""
+}
+
+variable "rds_security_group_id" {
+  description = "Security group ID of the existing RDS instance to allow EKS ingress. If empty, auto-discovered"
+  type        = string
+  default     = ""
+}
+
+variable "redis_security_group_id" {
+  description = "Security group ID of the existing ElastiCache Redis cluster. If empty, auto-discovered"
+  type        = string
+  default     = ""
+}
+
+variable "sqs_queue_arn" {
+  description = "ARN of the existing SQS queue for order processing. If empty, auto-discovered"
+  type        = string
+  default     = ""
+}
+
+variable "custom_header_name" {
+  description = "Header name for CloudFront origin verification (matches Stage 8)"
+  type        = string
+  default     = "X-Origin-Verify"
+}
+
+variable "custom_header_value" {
+  description = "Secret header value for CloudFront origin verification"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+# ------------------------------------------------------------------------------
+# EKS Cluster Sizing & Configuration
+# ------------------------------------------------------------------------------
+
+variable "kubernetes_version" {
+  description = "Amazon EKS Kubernetes version"
+  type        = string
+  default     = "1.30"
+}
+
+variable "instance_types" {
+  description = "EC2 instance types for EKS worker nodes"
+  type        = list(string)
+  default     = ["t3.medium"]
+}
+
+variable "desired_capacity" {
+  description = "Desired number of worker nodes"
+  type        = number
+  default     = 2
+}
+
+variable "min_capacity" {
+  description = "Minimum number of worker nodes"
+  type        = number
+  default     = 2
+}
+
+variable "max_capacity" {
+  description = "Maximum number of worker nodes"
+  type        = number
+  default     = 4
+}
+
+variable "disk_size" {
+  description = "Root disk volume size in GB for worker nodes"
+  type        = number
+  default     = 30
+}
+
+# ------------------------------------------------------------------------------
+# Blue/Green Traffic Migration Weights
+# ------------------------------------------------------------------------------
+
+variable "blue_weight" {
+  description = "Traffic percentage routed to Stage 8 (Blue) EC2/ASG Target Group"
+  type        = number
+  default     = 100
+}
+
+variable "green_weight" {
+  description = "Traffic percentage routed to Stage 9 (Green) EKS Target Group"
+  type        = number
+  default     = 0
+}
+
+variable "enable_product_path_routing" {
+  description = "Direct /api/products* traffic to EKS Product Service"
+  type        = bool
+  default     = false
+}
+
+variable "enable_order_path_routing" {
+  description = "Direct /api/orders* traffic to EKS Order Service"
+  type        = bool
+  default     = false
+}
+
+variable "tags" {
+  description = "Additional tags for Stage 9 resources"
+  type        = map(string)
+  default     = {}
+}

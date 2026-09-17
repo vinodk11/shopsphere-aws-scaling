@@ -1,0 +1,5 @@
+framework:
+  - terraform
+soft-fail: true
+download-external-modules: false
+output: json
