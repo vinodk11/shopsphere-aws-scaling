@@ -42,7 +42,7 @@ for svc in "${SERVICES[@]}"; do
     PORT=$(echo "$svc" | cut -d':' -f2)
     echo -n "Probing http://${NAME}:${PORT}/health ... "
 
-    STATUS=$(kubectl run curl-health-probe --image=curlimages/curl:latest --rm -i --restart=Never -n "${NAMESPACE}" \
+    STATUS=$(kubectl run "curl-${NAME}-${RANDOM}" --image=curlimages/curl:latest --rm -i --restart=Never -n "${NAMESPACE}" \
         --command -- curl -s -f --max-time 5 "http://${NAME}:${PORT}/health" 2>/dev/null || echo "")
 
     if echo "${STATUS}" | grep -q '"status":"UP"'; then
@@ -54,7 +54,7 @@ done
 
 # 3. Microservice Integrations Verification (DB, Redis, SQS)
 echo -e "\n${BLUE}▶ [Check 3/4] Validating Backend Data Tier Integrations...${NC}"
-PROD_STATUS=$(kubectl run curl-db-probe --image=curlimages/curl:latest --rm -i --restart=Never -n "${NAMESPACE}" \
+PROD_STATUS=$(kubectl run "curl-db-probe-${RANDOM}" --image=curlimages/curl:latest --rm -i --restart=Never -n "${NAMESPACE}" \
     --command -- curl -s "http://product-service:8081/health" 2>/dev/null || echo "{}")
 
 if echo "${PROD_STATUS}" | grep -q '"status":"connected"'; then
