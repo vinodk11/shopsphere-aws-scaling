@@ -1,347 +1,261 @@
-// =============================================================================
-// ShopSphere Stage 9 - Dedicated Microservices Application CI/CD Pipeline
-// =============================================================================
-// Responsibility: Microservices build, unit testing, multi-service Docker packaging,
-// image vulnerability scanning, ECR push with immutable tags, EKS deployment,
-// in-cluster health validation, progressive traffic migration, and DAST security gating.
-//
-// This pipeline does NOT run Terraform apply or provision AWS infrastructure.
-//
-// Pipeline Flow:
-//   Checkout & Versioning
-//   ↓
-//   Application Build & Unit Tests (Product, Order, User Services)
-//   ↓
-//   Parallel Application Security (Gitleaks Secrets, Semgrep SAST, Trivy SCA)
-//   ↓
-//   Microservices Docker Multi-Stage Builds (Product, Order, User)
-//   ↓
-//   Container Image Security Scanning (Trivy Image Scan)
-//   ↓
-//   Amazon ECR Immutable Tag Publishing
-//   ↓
-//   Deploy Workloads & Microservices to Amazon EKS (deploy.sh)
-//   ↓
-//   Multi-Tier Health & Data Layer Verification (health-check.sh)
-//   ↓
-//   Progressive Traffic Migration Gate (migrate-traffic.sh)
-//   ↓
-//   Dynamic Application Security Testing (OWASP ZAP DAST)
-//   ↓
-//   Final Security Quality Gate
-// =============================================================================
+// ShopSphere Stage 9 - Application Pipeline v2
+// Uses Jenkins integrations for Node, Docker/ECR, AWS credentials and Kubernetes access.
+// The old deploy.sh / health-check.sh / migrate-traffic.sh / rollback.sh scripts are not used.
 
 pipeline {
-    agent any
+  agent any
 
-    parameters {
-        choice(
-            name: 'ENVIRONMENT',
-            choices: ['stage9', 'dev', 'test', 'prod'],
-            description: 'Target AWS environment hosting the Stage 9 EKS infrastructure'
-        )
-        string(
-            name: 'OVERRIDE_IMAGE_TAG',
-            defaultValue: '',
-            description: 'Optional manual immutable image tag override (Default: v9.${BUILD_NUMBER}-${GIT_COMMIT})'
-        )
-        choice(
-            name: 'MIGRATION_WEIGHT',
-            choices: ['100-0 (Test Green 0%)', '90-10 (Canary 10%)', '75-25 (Migration 25%)', '50-50 (Balanced 50%)', '25-75 (Majority 75%)', '0-100 (Full EKS 100%)'],
-            description: 'ALB Blue/Green traffic weight distribution [Stage 8 Blue - Stage 9 Green]'
-        )
-        booleanParam(
-            name: 'ENABLE_PATH_ROUTING',
-            defaultValue: false,
-            description: 'Activate path-based routing rules (/api/products*, /api/orders*) directly to EKS microservices'
-        )
-        booleanParam(
-            name: 'RUN_DAST',
-            defaultValue: true,
-            description: 'Execute OWASP ZAP Dynamic Application Security Testing (DAST) baseline scan post-deployment'
-        )
-        booleanParam(
-            name: 'STRICT_SECURITY_GATES',
-            defaultValue: false,
-            description: 'Fail pipeline on any CRITICAL vulnerability detected across security scanners'
-        )
+  parameters {
+    choice(name: 'MIGRATION_WEIGHT', choices: ['100-0','90-10','75-25','50-50','25-75','0-100'], description: 'Blue(Stage 8)-Green(Stage 9) weights for the catch-all rule.')
+    booleanParam(name: 'ENABLE_PRODUCT_PATH', defaultValue: false, description: 'Enable /api/products* ALB rule through the infrastructure pipeline.')
+    booleanParam(name: 'ENABLE_ORDER_PATH', defaultValue: false, description: 'Enable /api/orders* ALB rule through the infrastructure pipeline.')
+    booleanParam(name: 'ENABLE_USER_PATH', defaultValue: false, description: 'Enable /api/users* ALB rule through the infrastructure pipeline.')
+    booleanParam(name: 'RUN_DAST', defaultValue: true, description: 'Run ZAP baseline after deployment.')
+    string(name: 'DAST_URL', defaultValue: 'https://REPLACE_WITH_STAGE9_URL', description: 'Application URL used by the DAST stage.')
+  }
+
+  tools {
+    nodejs 'node-20'
+  }
+
+  environment {
+    AWS_REGION = 'us-east-1'
+    AWS_CREDENTIALS = 'aws-jenkins'
+    EKS_CLUSTER = 'shopsphere-stage9-eks'
+    NAMESPACE = 'shopsphere-stage9'
+    REPORT_DIR = 'stage-9/security/reports'
+    ECR_REGISTRY = ''
+    FRONTEND_REPO = 'shopsphere-stage9-frontend'
+    PRODUCT_REPO = 'shopsphere-stage9-product'
+    ORDER_REPO = 'shopsphere-stage9-order'
+    USER_REPO = 'shopsphere-stage9-user'
+    KUBECONFIG_CREDENTIAL = 'shopsphere-stage9-kubeconfig'
+    DB_PASSWORD_CREDENTIAL = 'shopsphere-db-password'
+    INFRA_JOB = 'shopsphere-stage9-infra'
+  }
+
+  options {
+    timeout(time: 90, unit: 'MINUTES')
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+    ansiColor('xterm')
+  }
+
+  stages {
+    stage('Checkout') {
+      steps { checkout scm }
     }
 
-    environment {
-        SERVICES_DIR       = 'stage-9/services'
-        REPORTS_DIR        = 'stage-9/security/reports'
-        PROJECT_NAME       = 'shopsphere'
-        AWS_DEFAULT_REGION = 'us-east-1'
-        NODE_IMAGE         = 'node:18-alpine'
-        SEMGREP_IMAGE      = 'returntocorp/semgrep:latest'
-        TRIVY_IMAGE        = 'aquasec/trivy:latest'
-        GITLEAKS_IMAGE     = 'zricethezav/gitleaks:latest'
-        ZAP_IMAGE          = 'zaproxy/zap-stable:latest'
+    stage('Version') {
+      steps {
+        withAWS(credentials: env.AWS_CREDENTIALS, region: env.AWS_REGION) {
+          script {
+            def identity = awsIdentity()
+            env.AWS_ACCOUNT_ID = identity.account
+            env.ECR_REGISTRY = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
+            env.RELEASE_TAG = "v9.${BUILD_NUMBER}-${env.GIT_COMMIT.take(8)}"
+            env.FRONTEND_IMAGE = "${env.ECR_REGISTRY}/${env.FRONTEND_REPO}:${env.RELEASE_TAG}"
+            env.PRODUCT_IMAGE = "${env.ECR_REGISTRY}/${env.PRODUCT_REPO}:${env.RELEASE_TAG}"
+            env.ORDER_IMAGE = "${env.ECR_REGISTRY}/${env.ORDER_REPO}:${env.RELEASE_TAG}"
+            env.USER_IMAGE = "${env.ECR_REGISTRY}/${env.USER_REPO}:${env.RELEASE_TAG}"
+          }
+        }
+        echo "Immutable release: ${env.RELEASE_TAG}"
+      }
     }
 
-    options {
-        timeout(time: 60, unit: 'MINUTES')
-        buildDiscarder(logRotator(numToKeepStr: '15'))
-        ansiColor('xterm')
+    stage('Unit Tests') {
+      steps {
+        nodejs(nodeJSInstallationName: 'node-20') {
+          sh 'for s in frontend product order user; do (cd stage-9/services/$s && npm ci --if-present && npm test --if-present); done'
+        }
+      }
     }
 
-    stages {
-
-        // =====================================================================
-        // 1. Source Checkout & Versioning
-        // =====================================================================
-        stage('Checkout & Versioning') {
-            steps {
-                echo "🚀 [1/11: Checkout] Checking out application source code..."
-                checkout scm
-                script {
-                    def gitCommitShort = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                    env.GIT_COMMIT_SHORT = gitCommitShort
-
-                    if (params.OVERRIDE_IMAGE_TAG && params.OVERRIDE_IMAGE_TAG.trim() != '') {
-                        env.RELEASE_TAG = params.OVERRIDE_IMAGE_TAG.trim()
-                    } else {
-                        env.RELEASE_TAG = "v9.${env.BUILD_NUMBER}-${gitCommitShort}"
-                    }
-                    echo "Immutable Release Tag : ${env.RELEASE_TAG}"
-
-                    sh "mkdir -p ${env.REPORTS_DIR} build-dist"
-                }
+    stage('SAST / SCA / Secrets') {
+      parallel {
+        stage('Semgrep') {
+          steps {
+            script {
+              docker.image('semgrep/semgrep:1.99.0').inside('-v "${WORKSPACE}:/src"') {
+                sh 'semgrep scan --config /src/stage-9/security/sast/.semgrep.yaml --json --output /src/stage-9/security/reports/semgrep.json /src/stage-9/services'
+              }
             }
+          }
         }
-
-        // =====================================================================
-        // 2. Unit Testing Microservices
-        // =====================================================================
-        stage('Unit Tests') {
-            steps {
-                echo "🧪 [2/11: Unit Tests] Running automated tests across microservices..."
-                sh """
-                    docker run --rm -v \$(pwd):/app -w /app/${env.SERVICES_DIR}/product ${env.NODE_IMAGE} node --test
-                    docker run --rm -v \$(pwd):/app -w /app/${env.SERVICES_DIR}/order ${env.NODE_IMAGE} node --test
-                    docker run --rm -v \$(pwd):/app -w /app/${env.SERVICES_DIR}/user ${env.NODE_IMAGE} node --test
-                """
+        stage('Gitleaks') {
+          steps {
+            script {
+              docker.image('zricethezav/gitleaks:8.24.2').inside('-v "${WORKSPACE}:/repo"') {
+                sh 'gitleaks detect --source=/repo --report-format=json --report-path=/repo/stage-9/security/reports/gitleaks.json --redact'
+              }
             }
+          }
         }
-
-        // =====================================================================
-        // 3. Security Scans (SAST, Secrets, SCA)
-        // =====================================================================
-        stage('Application Security') {
-            parallel {
-                stage('Secrets Scan (Gitleaks)') {
-                    steps {
-                        echo "🔑 [3a: Gitleaks] Scanning repository for leaked secrets..."
-                        sh """
-                            docker run --rm -v \$(pwd):/repo ${env.GITLEAKS_IMAGE} \
-                                detect --source=/repo -v --report-format=json --report-path=/repo/${env.REPORTS_DIR}/gitleaks-report.json || true
-                        """
-                    }
-                }
-                stage('SAST (Semgrep)') {
-                    steps {
-                        echo "🔍 [3b: Semgrep] Performing static security analysis..."
-                        sh """
-                            docker run --rm -v \$(pwd):/src ${env.SEMGREP_IMAGE} \
-                                semgrep scan --config=/src/stage-9/security/sast/.semgrep.yaml --json -o /src/${env.REPORTS_DIR}/semgrep-report.json /src/${env.SERVICES_DIR} || true
-                        """
-                    }
-                }
-                stage('SCA (Trivy Filesystem)') {
-                    steps {
-                        echo "📦 [3c: Trivy SCA] Scanning dependency supply chain..."
-                        sh """
-                            docker run --rm -v \$(pwd):/workspace ${env.TRIVY_IMAGE} \
-                                fs --severity HIGH,CRITICAL --format json -o /workspace/${env.REPORTS_DIR}/trivy-fs-report.json /workspace/${env.SERVICES_DIR} || true
-                        """
-                    }
-                }
+        stage('Trivy FS') {
+          steps {
+            script {
+              docker.image('aquasec/trivy:0.66.0').inside('-v "${WORKSPACE}:/workspace"') {
+                sh 'trivy fs --severity HIGH,CRITICAL --format sarif --output /workspace/stage-9/security/reports/trivy-fs.sarif /workspace/stage-9/services'
+              }
             }
+          }
         }
-
-        // =====================================================================
-        // 4. Docker Multi-Stage Image Builds
-        // =====================================================================
-        stage('Docker Builds') {
-            steps {
-                echo "🐳 [4/11: Docker Builds] Building hardened microservice containers..."
-                sh """
-                    echo "Building Product Service image..."
-                    docker build -t shopsphere-product:${env.RELEASE_TAG} -t shopsphere-product:latest ${env.SERVICES_DIR}/product
-
-                    echo "Building Order Service image..."
-                    docker build -t shopsphere-order:${env.RELEASE_TAG} -t shopsphere-order:latest ${env.SERVICES_DIR}/order
-
-                    echo "Building User Service image..."
-                    docker build -t shopsphere-user:${env.RELEASE_TAG} -t shopsphere-user:latest ${env.SERVICES_DIR}/user
-                """
-            }
-        }
-
-        // =====================================================================
-        // 5. Container Vulnerability Scans (Trivy Image)
-        // =====================================================================
-        stage('Container Image Scans') {
-            steps {
-                echo "🛡️ [5/11: Trivy Image] Scanning container images for CVEs..."
-                sh """
-                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v \$(pwd):/workspace ${env.TRIVY_IMAGE} \
-                        image --severity HIGH,CRITICAL --format json -o /workspace/${env.REPORTS_DIR}/trivy-product-report.json shopsphere-product:${env.RELEASE_TAG} || true
-
-                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v \$(pwd):/workspace ${env.TRIVY_IMAGE} \
-                        image --severity HIGH,CRITICAL --format json -o /workspace/${env.REPORTS_DIR}/trivy-order-report.json shopsphere-order:${env.RELEASE_TAG} || true
-                """
-            }
-        }
-
-        // =====================================================================
-        // 6. Push to Amazon ECR
-        // =====================================================================
-        stage('ECR Publish') {
-            steps {
-                echo "📦 [6/11: ECR Push] Authenticating and pushing immutable tags to Amazon ECR..."
-                script {
-                    def accountId = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
-                    def ecrPrefix = "${accountId}.dkr.ecr.${env.AWS_DEFAULT_REGION}.amazonaws.com"
-
-                    sh """
-                        aws ecr get-login-password --region "${env.AWS_DEFAULT_REGION}" | docker login --username AWS --password-stdin "${ecrPrefix}"
-
-                        # Tag & Push Product Service
-                        docker tag shopsphere-product:${env.RELEASE_TAG} "${ecrPrefix}/shopsphere-stage9-product:${env.RELEASE_TAG}"
-                        docker tag shopsphere-product:latest "${ecrPrefix}/shopsphere-stage9-product:latest"
-                        docker push "${ecrPrefix}/shopsphere-stage9-product:${env.RELEASE_TAG}"
-                        docker push "${ecrPrefix}/shopsphere-stage9-product:latest"
-
-                        # Tag & Push Order Service
-                        docker tag shopsphere-order:${env.RELEASE_TAG} "${ecrPrefix}/shopsphere-stage9-order:${env.RELEASE_TAG}"
-                        docker tag shopsphere-order:latest "${ecrPrefix}/shopsphere-stage9-order:latest"
-                        docker push "${ecrPrefix}/shopsphere-stage9-order:${env.RELEASE_TAG}"
-                        docker push "${ecrPrefix}/shopsphere-stage9-order:latest"
-
-                        # Tag & Push User Service
-                        docker tag shopsphere-user:${env.RELEASE_TAG} "${ecrPrefix}/shopsphere-stage9-user:${env.RELEASE_TAG}"
-                        docker tag shopsphere-user:latest "${ecrPrefix}/shopsphere-stage9-user:latest"
-                        docker push "${ecrPrefix}/shopsphere-stage9-user:${env.RELEASE_TAG}"
-                        docker push "${ecrPrefix}/shopsphere-stage9-user:latest"
-                    """
-                }
-            }
-        }
-
-        // =====================================================================
-        // 7. Deploy to Amazon EKS
-        // =====================================================================
-        stage('Deploy to EKS') {
-            steps {
-                echo "☸️ [7/11: EKS Deploy] Applying manifests & waiting for rollout on Amazon EKS..."
-                sh """
-                    chmod +x stage-9/scripts/deploy.sh
-                    ./stage-9/scripts/deploy.sh "shopsphere-stage9-eks" "${env.RELEASE_TAG}"
-                """
-            }
-        }
-
-        // =====================================================================
-        // 8. Health Verification
-        // =====================================================================
-        stage('Health Verification') {
-            steps {
-                echo "🔍 [8/11: Health Probing] Validating pod health, services, and backend integrations..."
-                sh """
-                    chmod +x stage-9/scripts/health-check.sh
-                    ./stage-9/scripts/health-check.sh
-                """
-            }
-        }
-
-        // =====================================================================
-        // 9. Progressive Traffic Migration Gate
-        // =====================================================================
-        stage('Traffic Migration') {
-            steps {
-                echo "🔀 [9/11: Traffic Shift] Applying selected traffic distribution: ${params.MIGRATION_WEIGHT}..."
-                script {
-                    def weights = params.MIGRATION_WEIGHT.split(' ')[0].split('-')
-                    def blue = weights[0]
-                    def green = weights[1]
-
-                    sh """
-                        chmod +x stage-9/scripts/migrate-traffic.sh
-                        ./stage-9/scripts/migrate-traffic.sh weight "${blue}" "${green}"
-
-                        if [ "${params.ENABLE_PATH_ROUTING}" == "true" ]; then
-                            ./stage-9/scripts/migrate-traffic.sh path-product enable
-                            ./stage-9/scripts/migrate-traffic.sh path-order enable
-                        fi
-                        ./stage-9/scripts/migrate-traffic.sh status
-                    """
-                }
-            }
-        }
-
-        // =====================================================================
-        // 10. Dynamic Application Security Testing (DAST)
-        // =====================================================================
-        stage('DAST (OWASP ZAP)') {
-            when {
-                expression { return params.RUN_DAST }
-            }
-            steps {
-                echo "🎯 [10/11: DAST] Running OWASP ZAP vulnerability scan against live edge..."
-                script {
-                    def cfDomain = sh(
-                        script: """
-                            aws cloudfront list-distributions \
-                                --query "DistributionList.Items[?contains(Comment, 'ShopSphere')].DomainName | [0]" \
-                                --output text 2>/dev/null || echo ""
-                        """,
-                        returnStdout: true
-                    ).trim()
-
-                    if (cfDomain && cfDomain != 'None') {
-                        sh """
-                            docker run --rm -v \$(pwd)/stage-9:/zap/wrk/:rw ${env.ZAP_IMAGE} \
-                                zap-baseline.py -t "https://${cfDomain}" \
-                                -c "/zap/wrk/security/dast/zap-baseline.conf" \
-                                -J "/zap/wrk/security/reports/zap-report.json" \
-                                -r "/zap/wrk/security/reports/zap-report.html" || true
-                        """
-                    } else {
-                        echo "CloudFront distribution not found; skipping DAST."
-                    }
-                }
-            }
-        }
-
-        // =====================================================================
-        // 11. Final Security Quality Gate
-        // =====================================================================
-        stage('Final Security Gate') {
-            steps {
-                echo "📊 [11/11: Quality Gate] Evaluating DevSecOps and Container Security criteria..."
-                sh """
-                    echo "Security reports generated:"
-                    ls -lh ${env.REPORTS_DIR}/ || true
-                    echo "✅ Stage 9 Security Gate passed."
-                """
-            }
-        }
+      }
+      post {
+        always { archiveArtifacts artifacts: 'stage-9/security/reports/*', allowEmptyArchive: true }
+      }
     }
 
-    // =========================================================================
-    // Post-Execution Actions
-    // =========================================================================
-    post {
-        always {
-            echo "📦 Archiving Application Pipeline artifacts..."
-            archiveArtifacts artifacts: "${env.REPORTS_DIR}/**", allowEmptyArchive: true
+    stage('Build, Scan & Push Images') {
+      steps {
+        script {
+          def images = [
+            [repo: env.FRONTEND_REPO, context: 'stage-9/services/frontend'],
+            [repo: env.PRODUCT_REPO, context: 'stage-9/services/product'],
+            [repo: env.ORDER_REPO, context: 'stage-9/services/order'],
+            [repo: env.USER_REPO, context: 'stage-9/services/user']
+          ]
+          images.each { item ->
+            def image = docker.build("${env.ECR_REGISTRY}/${item.repo}:${env.RELEASE_TAG}", item.context)
+            docker.image('aquasec/trivy:0.66.0').inside('-v /var/run/docker.sock:/var/run/docker.sock -v "${WORKSPACE}:/workspace"') {
+              sh "trivy image --severity HIGH,CRITICAL --format sarif --output /workspace/stage-9/security/reports/${item.repo}.sarif ${env.ECR_REGISTRY}/${item.repo}:${env.RELEASE_TAG}"
+            }
+            docker.withRegistry("https://${env.ECR_REGISTRY}", "ecr:${env.AWS_REGION}:${env.AWS_CREDENTIALS}") {
+              image.push()
+            }
+          }
         }
-        success {
-            echo "🎉 [STAGE 9 SUCCESS] Microservices deployed and progressive migration updated successfully!"
-        }
-        failure {
-            echo "❌ [STAGE 9 FAILURE] Deployment or health check failed. Run ./stage-9/scripts/rollback.sh to revert to Stage 8 immediately."
-        }
+      }
+      post {
+        always { archiveArtifacts artifacts: 'stage-9/security/reports/*', allowEmptyArchive: true }
+      }
     }
+
+    stage('Import Infrastructure Outputs') {
+      steps {
+        copyArtifacts(projectName: env.INFRA_JOB, selector: specific('lastSuccessful'), filter: 'stage-9/terraform/stage9-outputs.json', fingerprintArtifacts: true)
+        script {
+          def outputs = readJSON file: 'stage-9/terraform/stage9-outputs.json'
+          env.EKS_CLUSTER = outputs.eks_cluster_name.value
+          env.LBC_ROLE_ARN = outputs.aws_load_balancer_controller_role_arn.value
+          env.BLUE_GREEN_RULE_ARN = outputs.blue_green_listener_rule_arn.value
+          env.STAGE8_TG_ARN = outputs.stage8_target_group_arn.value
+          env.STAGE9_FRONTEND_TG_ARN = outputs.stage9_frontend_target_group_arn ? outputs.stage9_frontend_target_group_arn.value : (outputs.stage9_monolith_target_group_arn ? outputs.stage9_monolith_target_group_arn.value : '')
+          env.STAGE9_MONOLITH_TG_ARN = env.STAGE9_FRONTEND_TG_ARN
+          env.STAGE9_PRODUCT_TG_ARN = outputs.stage9_product_target_group_arn.value
+          env.STAGE9_ORDER_TG_ARN = outputs.stage9_order_target_group_arn.value
+          env.STAGE9_USER_TG_ARN = outputs.stage9_user_target_group_arn.value
+          env.ORDER_SQS_ROLE_ARN = outputs.order_service_sqs_role_arn.value
+          env.DB_HOST = outputs.db_host.value
+          env.REDIS_HOST = outputs.redis_host.value
+          env.DB_NAME = outputs.db_name.value
+          env.DB_USER = outputs.db_user.value
+          env.SQS_QUEUE_URL = outputs.sqs_queue_url.value
+        }
+      }
+    }
+
+    stage('Render Kubernetes Manifests') {
+      steps {
+        script {
+          sh 'rm -rf build-dist && mkdir -p build-dist/kubernetes'
+          def files = findFiles(glob: 'stage-9/kubernetes/**/*.yaml')
+          files.each { f ->
+            def text = readFile(f.path)
+            text = text.replace('${FRONTEND_IMAGE}', env.FRONTEND_IMAGE)
+                         .replace('${PRODUCT_IMAGE}', env.PRODUCT_IMAGE)
+                         .replace('${ORDER_IMAGE}', env.ORDER_IMAGE)
+                         .replace('${USER_IMAGE}', env.USER_IMAGE)
+                         .replace('${DB_HOST}', env.DB_HOST)
+                         .replace('${REDIS_HOST}', env.REDIS_HOST)
+                         .replace('${DB_NAME}', env.DB_NAME)
+                         .replace('${DB_USER}', env.DB_USER)
+                         .replace('${SQS_QUEUE_URL}', env.SQS_QUEUE_URL)
+                         .replace('${STAGE9_FRONTEND_TG_ARN}', env.STAGE9_FRONTEND_TG_ARN)
+                         .replace('${STAGE9_MONOLITH_TG_ARN}', env.STAGE9_FRONTEND_TG_ARN)
+                         .replace('${STAGE9_PRODUCT_TG_ARN}', env.STAGE9_PRODUCT_TG_ARN)
+                         .replace('${STAGE9_ORDER_TG_ARN}', env.STAGE9_ORDER_TG_ARN)
+                         .replace('${STAGE9_USER_TG_ARN}', env.STAGE9_USER_TG_ARN)
+                         .replace('${ORDER_SQS_ROLE_ARN}', env.ORDER_SQS_ROLE_ARN)
+            writeFile file: "build-dist/kubernetes/${f.path.substring('stage-9/kubernetes/'.length())}", text: text
+          }
+        }
+      }
+    }
+
+    stage('Create Runtime Secret') {
+      steps {
+        withCredentials([string(credentialsId: env.DB_PASSWORD_CREDENTIAL, variable: 'DB_PASSWORD')]) {
+          withKubeConfig([credentialsId: env.KUBECONFIG_CREDENTIAL, namespace: env.NAMESPACE]) {
+            sh 'kubectl -n ${NAMESPACE} create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -'
+            sh 'kubectl -n ${NAMESPACE} create secret generic shopsphere-db-credentials --from-literal=DB_PASSWORD="$DB_PASSWORD" --dry-run=client -o yaml | kubectl apply -f -'
+          }
+        }
+      }
+    }
+
+    stage('Deploy EKS Workloads') {
+      steps {
+        withKubeConfig([credentialsId: env.KUBECONFIG_CREDENTIAL, namespace: env.NAMESPACE]) {
+          sh 'kubectl apply -f build-dist/kubernetes/namespaces/namespace.yaml'
+          sh 'kubectl apply -f build-dist/kubernetes/configmaps/app-config.yaml'
+          sh 'kubectl apply -f build-dist/kubernetes/frontend/'
+          sh 'kubectl apply -f build-dist/kubernetes/product-service/'
+          sh 'kubectl apply -f build-dist/kubernetes/order-service/'
+          sh 'kubectl apply -f build-dist/kubernetes/user-service/'
+          sh 'kubectl apply -f build-dist/kubernetes/ingress/target-group-binding.yaml'
+          sh 'kubectl -n ${NAMESPACE} rollout status deployment/frontend-service --timeout=5m'
+          sh 'kubectl -n ${NAMESPACE} rollout status deployment/product-service --timeout=5m'
+          sh 'kubectl -n ${NAMESPACE} rollout status deployment/order-service --timeout=5m'
+          sh 'kubectl -n ${NAMESPACE} rollout status deployment/user-service --timeout=5m'
+        }
+      }
+    }
+
+    stage('Health Gate') {
+      steps {
+        withKubeConfig([credentialsId: env.KUBECONFIG_CREDENTIAL, namespace: env.NAMESPACE]) {
+          sh 'kubectl -n ${NAMESPACE} get pods -o wide'
+          sh 'kubectl -n ${NAMESPACE} get endpoints frontend-service product-service order-service user-service'
+        }
+      }
+    }
+
+    stage('Progressive Traffic') {
+      steps {
+        script {
+          def parts = params.MIGRATION_WEIGHT.tokenize('-')
+          def blue = parts[0]
+          def green = parts[1]
+          echo "Requesting infrastructure pipeline to set Blue=${blue}, Green=${green}"
+          build job: env.INFRA_JOB, wait: true, propagate: true, parameters: [
+            string(name: 'ACTION', value: 'apply'),
+            booleanParam(name: 'AUTO_APPROVE', value: true),
+            booleanParam(name: 'ENABLE_PRODUCT_PATH', value: params.ENABLE_PRODUCT_PATH),
+            booleanParam(name: 'ENABLE_ORDER_PATH', value: params.ENABLE_ORDER_PATH),
+            booleanParam(name: 'ENABLE_USER_PATH', value: params.ENABLE_USER_PATH),
+            string(name: 'BLUE_WEIGHT', value: blue),
+            string(name: 'GREEN_WEIGHT', value: green)
+          ]
+        }
+      }
+    }
+
+    stage('DAST') {
+      when { expression { params.RUN_DAST } }
+      steps {
+        script {
+          docker.image('zaproxy/zap-stable:2.16.1').inside('-v "${WORKSPACE}:/zap/wrk"') {
+            sh 'zap-baseline.py -t ${DAST_URL} -r /zap/wrk/stage-9/security/reports/zap.html -J /zap/wrk/stage-9/security/reports/zap.json'
+          }
+        }
+      }
+      post { always { archiveArtifacts artifacts: 'stage-9/security/reports/zap.*', allowEmptyArchive: true } }
+    }
+  }
+
+  post {
+    success { echo "Stage 9 application deployment completed for ${RELEASE_TAG}." }
+    failure { echo 'Stage 9 application pipeline failed. Keep Stage 8 at its current traffic level and do not increase Green traffic.' }
+  }
 }

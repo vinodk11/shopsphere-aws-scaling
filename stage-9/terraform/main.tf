@@ -20,9 +20,21 @@ locals {
   vpc_id = var.vpc_id != "" ? var.vpc_id : data.aws_vpc.stage8[0].id
 }
 
-# Discover Multi-AZ subnets
-data "aws_subnets" "public" {
+# Discover Multi-AZ private subnets first. Explicit subnet_ids always win.
+data "aws_subnets" "private" {
   count = length(var.subnet_ids) == 0 ? 1 : 0
+  filter {
+    name   = "vpc-id"
+    values = [local.vpc_id]
+  }
+  filter {
+    name   = "tag:Tier"
+    values = ["Private"]
+  }
+}
+
+data "aws_subnets" "public" {
+  count = length(var.subnet_ids) == 0 && length(data.aws_subnets.private[0].ids) == 0 ? 1 : 0
   filter {
     name   = "vpc-id"
     values = [local.vpc_id]
@@ -34,21 +46,27 @@ data "aws_subnets" "public" {
 }
 
 locals {
-  subnet_ids = length(var.subnet_ids) > 0 ? var.subnet_ids : data.aws_subnets.public[0].ids
+  subnet_ids = length(var.subnet_ids) > 0 ? var.subnet_ids : (
+    length(data.aws_subnets.private[0].ids) > 0 ? data.aws_subnets.private[0].ids : data.aws_subnets.public[0].ids
+  )
 }
 
-# Discover existing ALB
-data "aws_lb" "existing" {
+# Existing ALB: support either an explicit ARN or the Stage 8 name.
+data "aws_lb" "existing_by_arn" {
+  count = var.alb_arn != "" ? 1 : 0
+  arn   = var.alb_arn
+}
+
+data "aws_lb" "existing_by_name" {
   count = var.alb_arn == "" ? 1 : 0
   name  = "${var.project_name}-stage8-alb"
 }
 
 locals {
-  alb_arn = var.alb_arn != "" ? var.alb_arn : data.aws_lb.existing[0].arn
-  alb_sg  = tolist(data.aws_lb.existing[0].security_groups)[0]
+  alb_arn = var.alb_arn != "" ? data.aws_lb.existing_by_arn[0].arn : data.aws_lb.existing_by_name[0].arn
+  alb_sg  = var.alb_arn != "" ? tolist(data.aws_lb.existing_by_arn[0].security_groups)[0] : tolist(data.aws_lb.existing_by_name[0].security_groups)[0]
 }
 
-# Discover existing ALB Listener
 data "aws_lb_listener" "existing_http" {
   count             = var.alb_listener_arn == "" ? 1 : 0
   load_balancer_arn = local.alb_arn
@@ -59,14 +77,19 @@ locals {
   alb_listener_arn = var.alb_listener_arn != "" ? var.alb_listener_arn : data.aws_lb_listener.existing_http[0].arn
 }
 
-# Discover existing Stage 8 Target Group
-data "aws_lb_target_group" "stage8" {
+# Existing Stage 8 target group.
+data "aws_lb_target_group" "stage8_by_arn" {
+  count = var.stage8_target_group_arn != "" ? 1 : 0
+  arn   = var.stage8_target_group_arn
+}
+
+data "aws_lb_target_group" "stage8_by_name" {
   count = var.stage8_target_group_arn == "" ? 1 : 0
   name  = "${var.project_name}-stage8-tg"
 }
 
 locals {
-  stage8_tg_arn = var.stage8_target_group_arn != "" ? var.stage8_target_group_arn : data.aws_lb_target_group.stage8[0].arn
+  stage8_tg_arn = var.stage8_target_group_arn != "" ? data.aws_lb_target_group.stage8_by_arn[0].arn : data.aws_lb_target_group.stage8_by_name[0].arn
 }
 
 # Discover existing SQS Queue ARN
@@ -185,6 +208,7 @@ module "alb_routing" {
   green_weight                = var.green_weight
   enable_product_path_routing = var.enable_product_path_routing
   enable_order_path_routing   = var.enable_order_path_routing
+  enable_user_path_routing    = var.enable_user_path_routing
   custom_header_name          = var.custom_header_name
   custom_header_value         = var.custom_header_value
   tags                        = var.tags

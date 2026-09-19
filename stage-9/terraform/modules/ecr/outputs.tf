@@ -22,6 +22,11 @@ output "order_repository_url" {
   value       = aws_ecr_repository.microservices["order"].repository_url
 }
 
+output "frontend_repository_url" {
+  description = "ECR Repository URL for Frontend Service"
+  value       = aws_ecr_repository.microservices["frontend"].repository_url
+}
+
 output "user_repository_url" {
   description = "ECR Repository URL for User Service"
   value       = aws_ecr_repository.microservices["user"].repository_url

@@ -1,316 +1,147 @@
-// =============================================================================
-// ShopSphere Stage 9 - Dedicated EKS Infrastructure CI/CD Pipeline
-// =============================================================================
-// Responsibility: Provisioning and managing Amazon EKS Cluster, Multi-AZ Node Groups,
-// IRSA IAM Roles, ECR Repositories, and ALB Blue/Green Routing using Terraform.
-// This pipeline does NOT build application Docker images or push microservice containers.
-//
-// Pipeline Flow:
-//   Checkout
-//   ↓
-//   Terraform Format Check (terraform fmt -check)
-//   ↓
-//   Terraform Init (terraform init)
-//   ↓
-//   Terraform Validate (terraform validate)
-//   ↓
-//   Checkov IaC Security Scan
-//   ↓
-//   Terraform Plan (generate & archive tfplan)
-//   ↓
-//   Manual Approval Gate
-//   ↓
-//   Terraform Apply (export infra-manifest.json)
-//   ↓
-//   EKS Infrastructure Verification
-// =============================================================================
+// ShopSphere Stage 9 - Infrastructure Pipeline v2
+// Jenkins plugins handle AWS context, Terraform tooling, reports and approvals.
+// No project shell scripts are called from this pipeline.
 
 pipeline {
-    agent any
+  agent any
 
-    parameters {
-        choice(
-            name: 'ENVIRONMENT',
-            choices: ['stage9', 'dev', 'test', 'prod'],
-            description: 'Target AWS deployment environment for ShopSphere Stage 9 EKS infrastructure'
-        )
-        choice(
-            name: 'ACTION',
-            choices: ['apply', 'plan', 'destroy'],
-            description: 'Terraform action to execute: apply (provision/update), plan (dry run), or destroy'
-        )
-        booleanParam(
-            name: 'AUTO_APPROVE',
-            defaultValue: false,
-            description: 'Skip manual approval gate before applying infrastructure changes'
-        )
-        booleanParam(
-            name: 'STRICT_CHECKOV',
-            defaultValue: false,
-            description: 'Enforce strict Checkov failure on HIGH or CRITICAL policy breaches'
-        )
+  parameters {
+    choice(name: 'ACTION', choices: ['plan', 'apply'], description: 'Never destroy Stage 8 from this job.')
+    booleanParam(name: 'AUTO_APPROVE', defaultValue: false, description: 'Skip the apply approval gate.')
+    booleanParam(name: 'ENABLE_PRODUCT_PATH', defaultValue: false, description: 'Enable /api/products* ALB rule.')
+    booleanParam(name: 'ENABLE_ORDER_PATH', defaultValue: false, description: 'Enable /api/orders* ALB rule.')
+    booleanParam(name: 'ENABLE_USER_PATH', defaultValue: false, description: 'Enable /api/users* ALB rule.')
+    string(name: 'BLUE_WEIGHT', defaultValue: '100', description: 'Stage 8 target-group weight.')
+    string(name: 'GREEN_WEIGHT', defaultValue: '0', description: 'Stage 9 target-group weight.')
+  }
+
+  tools {
+    terraform 'terraform-1.9'
+  }
+
+  environment {
+    TF_DIR = 'stage-9/terraform'
+    AWS_REGION = 'us-east-1'
+    AWS_CREDENTIALS = 'aws-jenkins'
+  }
+
+  options {
+    timeout(time: 90, unit: 'MINUTES')
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+    ansiColor('xterm')
+  }
+
+  stages {
+    stage('Checkout') {
+      steps { checkout scm }
     }
 
-    environment {
-        TF_DIR             = 'stage-9/terraform'
-        REPORTS_DIR        = 'stage-9/security/reports'
-        TF_IMAGE           = 'hashicorp/terraform:latest'
-        CHECKOV_IMAGE      = 'bridgecrew/checkov:latest'
-        AWS_DEFAULT_REGION = 'us-east-1'
-        TF_IN_AUTOMATION   = 'true'
+    stage('Terraform Format') {
+      steps {
+        dir(env.TF_DIR) {
+          sh 'terraform fmt -check -recursive'
+        }
+      }
     }
 
-    options {
-        timeout(time: 60, unit: 'MINUTES')
-        buildDiscarder(logRotator(numToKeepStr: '15'))
-        ansiColor('xterm')
+    stage('Terraform Init') {
+      steps {
+        dir(env.TF_DIR) {
+          withAWS(credentials: env.AWS_CREDENTIALS, region: env.AWS_REGION) {
+            sh 'terraform init -input=false'
+          }
+        }
+      }
     }
 
-    stages {
-
-        // =====================================================================
-        // 1. Source Checkout
-        // =====================================================================
-        stage('Checkout') {
-            steps {
-                echo "🚀 [1/9: Checkout] Checking out ShopSphere repository for Stage 9 EKS..."
-                checkout scm
-                sh """
-                    mkdir -p ${env.REPORTS_DIR}
-                    mkdir -p build-dist
-                """
-            }
-        }
-
-        // =====================================================================
-        // 2. Terraform Format Check
-        // =====================================================================
-        stage('Terraform Format Check') {
-            steps {
-                echo "📐 [2/9: Format Check] Verifying Terraform code style compliance..."
-                sh """
-                    docker run --rm \
-                        -v \$(pwd):/workspace \
-                        -w /workspace/${env.TF_DIR} \
-                        ${env.TF_IMAGE} fmt -check -recursive
-                """
-            }
-        }
-
-        // =====================================================================
-        // 3. Terraform Initialization
-        // =====================================================================
-        stage('Terraform Init') {
-            steps {
-                echo "🔧 [3/9: Init] Initializing Terraform providers and modules for ${params.ENVIRONMENT}..."
-                sh """
-                    docker run --rm \
-                        -v \$(pwd):/workspace \
-                        -w /workspace/${env.TF_DIR} \
-                        --net=host \
-                        ${env.TF_IMAGE} init -input=false
-                """
-            }
-        }
-
-        // =====================================================================
-        // 4. Terraform Validation
-        // =====================================================================
-        stage('Terraform Validate') {
-            steps {
-                echo "🔍 [4/9: Validate] Validating Terraform configuration syntax and module wiring..."
-                sh """
-                    docker run --rm \
-                        -v \$(pwd):/workspace \
-                        -w /workspace/${env.TF_DIR} \
-                        --net=host \
-                        ${env.TF_IMAGE} validate
-                """
-            }
-        }
-
-        // =====================================================================
-        // 5. Checkov IaC Security Scan
-        // =====================================================================
-        stage('Checkov IaC Security') {
-            steps {
-                echo "🛡️ [5/9: Checkov] Scanning Terraform code against CIS AWS Foundations Benchmark..."
-                script {
-                    def checkovExitCode = sh(
-                        script: """
-                            docker run --rm \
-                                -v \$(pwd):/tf \
-                                ${env.CHECKOV_IMAGE} \
-                                --config-file /tf/stage-9/security/iac/.checkov.yaml \
-                                -d /tf/${env.TF_DIR} \
-                                --output json --output-file-path /tf/${env.REPORTS_DIR} \
-                                --soft-fail
-                        """,
-                        returnStatus: true
-                    )
-
-                    sh """
-                        if [ -f "${env.REPORTS_DIR}/results_json.json" ]; then
-                            mv "${env.REPORTS_DIR}/results_json.json" "${env.REPORTS_DIR}/checkov-report.json"
-                        fi
-                        echo "Checkov scan completed. Report saved to ${env.REPORTS_DIR}/checkov-report.json"
-                    """
-
-                    if (params.STRICT_CHECKOV && checkovExitCode != 0) {
-                        echo "⚠️ Checkov detected policy violations. Evaluating findings..."
-                    }
-                }
-            }
-        }
-
-        // =====================================================================
-        // 6. Terraform Plan
-        // =====================================================================
-        stage('Terraform Plan') {
-            steps {
-                echo "📋 [6/9: Plan] Generating execution plan for environment: ${params.ENVIRONMENT}..."
-                script {
-                    if (params.ACTION == 'destroy') {
-                        echo "⚠️ Generating DESTROY plan for environment ${params.ENVIRONMENT}..."
-                        sh """
-                            docker run --rm \
-                                -v \$(pwd):/workspace \
-                                -w /workspace/${env.TF_DIR} \
-                                --net=host \
-                                ${env.TF_IMAGE} plan -destroy \
-                                -var="environment=${params.ENVIRONMENT}" \
-                                -out=tfplan -input=false
-
-                            docker run --rm \
-                                -v \$(pwd):/workspace \
-                                -w /workspace/${env.TF_DIR} \
-                                ${env.TF_IMAGE} show -no-color tfplan > ${env.TF_DIR}/tfplan.txt
-                        """
-                    } else {
-                        echo "📋 Generating APPLY plan for environment ${params.ENVIRONMENT}..."
-                        sh """
-                            docker run --rm \
-                                -v \$(pwd):/workspace \
-                                -w /workspace/${env.TF_DIR} \
-                                --net=host \
-                                ${env.TF_IMAGE} plan \
-                                -var="environment=${params.ENVIRONMENT}" \
-                                -out=tfplan -input=false
-
-                            docker run --rm \
-                                -v \$(pwd):/workspace \
-                                -w /workspace/${env.TF_DIR} \
-                                ${env.TF_IMAGE} show -no-color tfplan > ${env.TF_DIR}/tfplan.txt
-                        """
-                    }
-                }
-            }
-        }
-
-        // =====================================================================
-        // 7. Manual Approval Gate
-        // =====================================================================
-        stage('Manual Approval') {
-            when {
-                expression {
-                    return (params.ACTION == 'apply' || params.ACTION == 'destroy') && !params.AUTO_APPROVE
-                }
-            }
-            steps {
-                script {
-                    def actionText = params.ACTION.toUpperCase()
-                    echo "⏸️ [7/9: Approval] Awaiting operator confirmation for ${actionText} on Stage 9 EKS..."
-                    input(
-                        id: 'DeployApproval',
-                        message: "Review the Checkov scan and Terraform ${actionText} plan for environment '${params.ENVIRONMENT}'. Proceed?",
-                        ok: "Proceed with ${actionText}"
-                    )
-                }
-            }
-        }
-
-        // =====================================================================
-        // 8. Terraform Apply
-        // =====================================================================
-        stage('Terraform Apply') {
-            when {
-                expression { return params.ACTION == 'apply' || params.ACTION == 'destroy' }
-            }
-            steps {
-                script {
-                    if (params.ACTION == 'destroy') {
-                        echo "💥 [8/9: Destroy] Destroying Stage 9 EKS infrastructure..."
-                        sh """
-                            docker run --rm \
-                                -v \$(pwd):/workspace \
-                                -w /workspace/${env.TF_DIR} \
-                                --net=host \
-                                ${env.TF_IMAGE} apply -input=false tfplan
-                        """
-                    } else {
-                        echo "🚀 [8/9: Apply] Applying Stage 9 EKS infrastructure..."
-                        sh """
-                            docker run --rm \
-                                -v \$(pwd):/workspace \
-                                -w /workspace/${env.TF_DIR} \
-                                --net=host \
-                                ${env.TF_IMAGE} apply -input=false tfplan
-
-                            docker run --rm \
-                                -v \$(pwd):/workspace \
-                                -w /workspace/${env.TF_DIR} \
-                                --net=host \
-                                ${env.TF_IMAGE} output -json > ${env.TF_DIR}/infra-manifest.json
-                        """
-                        echo "✅ Infrastructure manifest exported to ${env.TF_DIR}/infra-manifest.json"
-                    }
-                }
-            }
-        }
-
-        // =====================================================================
-        // 9. EKS Infrastructure Verification
-        // =====================================================================
-        stage('EKS Verification') {
-            when {
-                expression { return params.ACTION == 'apply' }
-            }
-            steps {
-                echo "🧪 [9/9: Verification] Validating Amazon EKS cluster & node group status..."
-                sh """
-                    CLUSTER_STATUS=\$(aws eks describe-cluster --name "${params.ENVIRONMENT == 'stage9' ? 'shopsphere-stage9-eks' : 'shopsphere-' + params.ENVIRONMENT + '-eks'}" --region "${env.AWS_DEFAULT_REGION}" --query "cluster.status" --output text 2>/dev/null || echo "UNKNOWN")
-                    echo "EKS Cluster Status: \${CLUSTER_STATUS}"
-                    if [ "\${CLUSTER_STATUS}" != "ACTIVE" ]; then
-                        echo "⚠️ Cluster status is \${CLUSTER_STATUS} (may still be transitioning)."
-                    else
-                        echo "✅ EKS Cluster is in ACTIVE state!"
-                    fi
-                """
-            }
-        }
+    stage('Terraform Validate') {
+      steps {
+        dir(env.TF_DIR) { sh 'terraform validate' }
+      }
     }
 
-    // =========================================================================
-    // Post-Execution Notifications & Artifact Archiving
-    // =========================================================================
-    post {
-        always {
-            echo "📦 Archiving Stage 9 Infrastructure artifacts..."
-            archiveArtifacts artifacts: "${env.REPORTS_DIR}/**, ${env.TF_DIR}/tfplan.txt, ${env.TF_DIR}/infra-manifest.json", allowEmptyArchive: true
-            cleanWs(
-                cleanWhenAborted: false,
-                cleanWhenFailure: false,
-                cleanWhenNotBuilt: false,
-                cleanWhenSuccess: false,
-                cleanWhenUnstable: false,
-                deleteDirs: false
-            )
+    stage('Checkov IaC Scan') {
+      steps {
+        script {
+          docker.image('bridgecrew/checkov:3.2.451').inside('-v "${WORKSPACE}:/workspace"') {
+            sh 'checkov -d /workspace/stage-9/terraform --config-file /workspace/stage-9/security/iac/.checkov.yaml --output sarif --output-file-path /workspace/stage-9/security/reports/checkov.sarif'
+          }
         }
-        success {
-            echo "🎉 [EKS INFRASTRUCTURE PIPELINE SUCCESS] Amazon EKS cluster & migration infrastructure successfully provisioned and verified!"
-        }
-        failure {
-            echo "❌ [EKS INFRASTRUCTURE PIPELINE FAILURE] Terraform execution or verification failed. Inspect console logs and artifacts."
-        }
+      }
+      post {
+        always { archiveArtifacts artifacts: 'stage-9/security/reports/checkov.sarif', allowEmptyArchive: true }
+      }
     }
+
+    stage('Terraform Plan') {
+      steps {
+        dir(env.TF_DIR) {
+          withAWS(credentials: env.AWS_CREDENTIALS, region: env.AWS_REGION) {
+            sh 'terraform plan -input=false -var=enable_product_path_routing=${ENABLE_PRODUCT_PATH} -var=enable_order_path_routing=${ENABLE_ORDER_PATH} -var=enable_user_path_routing=${ENABLE_USER_PATH} -var=blue_weight=${BLUE_WEIGHT} -var=green_weight=${GREEN_WEIGHT} -out=stage9.tfplan'
+            sh 'terraform show -no-color stage9.tfplan > stage9-plan.txt'
+          }
+        }
+      }
+      post {
+        always { archiveArtifacts artifacts: 'stage-9/terraform/stage9.tfplan,stage-9/terraform/stage9-plan.txt', allowEmptyArchive: true }
+      }
+    }
+
+    stage('Approval') {
+      when { expression { params.ACTION == 'apply' && !params.AUTO_APPROVE } }
+      steps {
+        input message: 'Review the Stage 9 Terraform plan. Stage 8 must remain untouched. Apply?', ok: 'Apply Stage 9'
+      }
+    }
+
+    stage('Terraform Apply') {
+      when { expression { params.ACTION == 'apply' } }
+      steps {
+        dir(env.TF_DIR) {
+          withAWS(credentials: env.AWS_CREDENTIALS, region: env.AWS_REGION) {
+            sh 'terraform apply -input=false stage9.tfplan'
+          }
+        }
+      }
+    }
+
+    stage('Export Infrastructure Outputs') {
+      when { expression { params.ACTION == 'apply' } }
+      steps {
+        dir(env.TF_DIR) {
+          withAWS(credentials: env.AWS_CREDENTIALS, region: env.AWS_REGION) {
+            sh 'terraform output -json > stage9-outputs.json'
+          }
+        }
+      }
+      post { always { archiveArtifacts artifacts: 'stage-9/terraform/stage9-outputs.json', allowEmptyArchive: true } }
+    }
+
+    stage('Install AWS Load Balancer Controller') {
+      when { expression { params.ACTION == 'apply' } }
+      steps {
+        withKubeConfig([credentialsId: 'shopsphere-stage9-kubeconfig', namespace: 'kube-system']) {
+          script {
+            def outputs = readJSON file: 'stage-9/terraform/stage9-outputs.json'
+            env.LBC_ROLE_ARN = outputs.aws_load_balancer_controller_role_arn.value
+            env.EKS_CLUSTER_NAME = outputs.eks_cluster_name.value
+          }
+          sh 'helm repo add eks https://aws.github.io/eks-charts && helm repo update'
+          sh 'helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller --namespace kube-system --create-namespace --set clusterName=${EKS_CLUSTER_NAME} --set serviceAccount.create=true --set serviceAccount.name=aws-load-balancer-controller --set serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn=${LBC_ROLE_ARN} --wait'
+        }
+      }
+    }
+
+    stage('Infrastructure Outputs') {
+      when { expression { params.ACTION == 'apply' } }
+      steps {
+        echo 'Infrastructure outputs were exported and archived before the Kubernetes add-on installation.'
+      }
+    }
+  }
+
+  post {
+    success { echo 'Stage 9 infrastructure pipeline completed. Stage 8 was not intentionally destroyed or replaced.' }
+    failure { echo 'Stage 9 infrastructure pipeline failed. Do not proceed with traffic migration until the plan/apply issue is fixed.' }
+  }
 }

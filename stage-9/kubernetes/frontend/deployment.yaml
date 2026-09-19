@@ -1,12 +1,12 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: shopsphere-monolith
+  name: frontend-service
   namespace: shopsphere-stage9
   labels:
-    app: shopsphere-monolith
+    app: frontend-service
     stage: "stage-9"
-    tier: monolith-compatibility
+    tier: frontend
 spec:
   replicas: 2
   strategy:
@@ -16,11 +16,11 @@ spec:
       maxUnavailable: 0
   selector:
     matchLabels:
-      app: shopsphere-monolith
+      app: frontend-service
   template:
     metadata:
       labels:
-        app: shopsphere-monolith
+        app: frontend-service
     spec:
       securityContext:
         runAsNonRoot: true
@@ -28,25 +28,16 @@ spec:
         runAsGroup: 10001
         fsGroup: 10001
       containers:
-        - name: monolith
-          # Image replaced dynamically by CI/CD pipeline with immutable ECR tag
-          image: 165772574557.dkr.ecr.us-east-1.amazonaws.com/shopsphere-stage8-app:latest
+        - name: frontend
+          image: ${FRONTEND_IMAGE}
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8080
               protocol: TCP
-          envFrom:
-            - configMapRef:
-                name: shopsphere-common-config
           env:
             - name: PORT
               value: "8080"
-            - name: DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: shopsphere-db-credentials
-                  key: DB_PASSWORD
           resources:
             requests:
               cpu: 100m

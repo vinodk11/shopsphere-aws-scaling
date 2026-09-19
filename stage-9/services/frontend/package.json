@@ -1,0 +1,21 @@
+{
+  "name": "shopsphere-frontend-service",
+  "version": "9.0.0",
+  "description": "ShopSphere Microservices - Web UI and Interactive Dashboard Service (Stage 9 EKS)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "morgan": "^1.10.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "author": "ShopSphere Team",
+  "license": "MIT"
+}

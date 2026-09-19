@@ -1,14 +1,17 @@
-# ==============================================================================
-# ALB Routing Module - Stage 9 Blue/Green & Path-Based Traffic Migration
-# Coexists with Stage 8 ALB to enable progressive zero-downtime traffic shift
-# ==============================================================================
+# Stage 9 reuses the existing Stage 8 ALB.
+# Terraform owns the listener rules and target groups; AWS Load Balancer Controller
+# owns registration of Kubernetes Service endpoints into these existing target groups.
 
-# ------------------------------------------------------------------------------
-# 1. Stage 9 General EKS Target Group (Monolith Compatibility Workload)
-# ------------------------------------------------------------------------------
+locals {
+  path_priority_product = 5
+  path_priority_order   = 6
+  path_priority_user    = 7
+  blue_green_priority   = 9
+}
+
 resource "aws_lb_target_group" "stage9_monolith" {
   name        = "${var.project_name}-${var.environment}-eks-mono-tg"
-  port        = 8080
+  port        = 30080
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
   target_type = "instance"
@@ -27,23 +30,17 @@ resource "aws_lb_target_group" "stage9_monolith" {
     unhealthy_threshold = 3
   }
 
-  tags = merge(
-    var.tags,
-    {
-      Name        = "${var.project_name}-${var.environment}-eks-mono-tg"
-      Tier        = "Compute-TargetGroup"
-      Stage       = "Stage-9"
-      Environment = var.environment
-    }
-  )
+  tags = merge(var.tags, {
+    Name        = "${var.project_name}-${var.environment}-eks-mono-tg"
+    Service     = "monolith"
+    Stage       = "Stage-9"
+    Environment = var.environment
+  })
 }
 
-# ------------------------------------------------------------------------------
-# 2. Stage 9 Product Microservice Target Group
-# ------------------------------------------------------------------------------
 resource "aws_lb_target_group" "stage9_product" {
   name        = "${var.project_name}-${var.environment}-eks-prod-tg"
-  port        = 30081 # NodePort or ALB Controller IP target
+  port        = 30081
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
   target_type = "instance"
@@ -62,23 +59,17 @@ resource "aws_lb_target_group" "stage9_product" {
     unhealthy_threshold = 3
   }
 
-  tags = merge(
-    var.tags,
-    {
-      Name        = "${var.project_name}-${var.environment}-eks-prod-tg"
-      Service     = "product"
-      Stage       = "Stage-9"
-      Environment = var.environment
-    }
-  )
+  tags = merge(var.tags, {
+    Name        = "${var.project_name}-${var.environment}-eks-prod-tg"
+    Service     = "product"
+    Stage       = "Stage-9"
+    Environment = var.environment
+  })
 }
 
-# ------------------------------------------------------------------------------
-# 3. Stage 9 Order Microservice Target Group
-# ------------------------------------------------------------------------------
 resource "aws_lb_target_group" "stage9_order" {
   name        = "${var.project_name}-${var.environment}-eks-ord-tg"
-  port        = 30082 # NodePort or ALB Controller IP target
+  port        = 30082
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
   target_type = "instance"
@@ -97,25 +88,48 @@ resource "aws_lb_target_group" "stage9_order" {
     unhealthy_threshold = 3
   }
 
-  tags = merge(
-    var.tags,
-    {
-      Name        = "${var.project_name}-${var.environment}-eks-ord-tg"
-      Service     = "order"
-      Stage       = "Stage-9"
-      Environment = var.environment
-    }
-  )
+  tags = merge(var.tags, {
+    Name        = "${var.project_name}-${var.environment}-eks-ord-tg"
+    Service     = "order"
+    Stage       = "Stage-9"
+    Environment = var.environment
+  })
 }
 
-# ------------------------------------------------------------------------------
-# 4. Path-Based Listener Rule: Route /api/products* to Stage 9 Product Service
-# (Enabled only when enable_product_path_routing = true)
-# ------------------------------------------------------------------------------
+resource "aws_lb_target_group" "stage9_user" {
+  name        = "${var.project_name}-${var.environment}-eks-user-tg"
+  port        = 30083
+  protocol    = "HTTP"
+  vpc_id      = var.vpc_id
+  target_type = "instance"
+
+  deregistration_delay = 30
+
+  health_check {
+    enabled             = true
+    path                = "/health"
+    port                = "traffic-port"
+    protocol            = "HTTP"
+    matcher             = "200"
+    interval            = 15
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+  }
+
+  tags = merge(var.tags, {
+    Name        = "${var.project_name}-${var.environment}-eks-user-tg"
+    Service     = "user"
+    Stage       = "Stage-9"
+    Environment = var.environment
+  })
+}
+
+# Lower priority number = evaluated first by ALB. These rules must be before /*.
 resource "aws_lb_listener_rule" "product_service" {
   count        = var.enable_product_path_routing ? 1 : 0
   listener_arn = var.alb_listener_arn
-  priority     = 20
+  priority     = local.path_priority_product
 
   action {
     type             = "forward"
@@ -123,12 +137,9 @@ resource "aws_lb_listener_rule" "product_service" {
   }
 
   condition {
-    path_pattern {
-      values = ["/api/products", "/api/products/*"]
-    }
+    path_pattern { values = ["/api/products", "/api/products/*"] }
   }
 
-  # If CloudFront header verification is enabled, also enforce header condition
   dynamic "condition" {
     for_each = var.custom_header_name != "" && var.custom_header_value != "" ? [1] : []
     content {
@@ -138,24 +149,12 @@ resource "aws_lb_listener_rule" "product_service" {
       }
     }
   }
-
-  tags = merge(
-    var.tags,
-    {
-      Name    = "${var.project_name}-${var.environment}-rule-product-path"
-      Service = "product"
-    }
-  )
 }
 
-# ------------------------------------------------------------------------------
-# 5. Path-Based Listener Rule: Route /api/orders* to Stage 9 Order Service
-# (Enabled only when enable_order_path_routing = true)
-# ------------------------------------------------------------------------------
 resource "aws_lb_listener_rule" "order_service" {
   count        = var.enable_order_path_routing ? 1 : 0
   listener_arn = var.alb_listener_arn
-  priority     = 25
+  priority     = local.path_priority_order
 
   action {
     type             = "forward"
@@ -163,9 +162,7 @@ resource "aws_lb_listener_rule" "order_service" {
   }
 
   condition {
-    path_pattern {
-      values = ["/api/orders", "/api/orders/*"]
-    }
+    path_pattern { values = ["/api/orders", "/api/orders/*"] }
   }
 
   dynamic "condition" {
@@ -177,26 +174,38 @@ resource "aws_lb_listener_rule" "order_service" {
       }
     }
   }
-
-  tags = merge(
-    var.tags,
-    {
-      Name    = "${var.project_name}-${var.environment}-rule-order-path"
-      Service = "order"
-    }
-  )
 }
 
-# ------------------------------------------------------------------------------
-# 6. Blue/Green Weighted Listener Rule (Canary & Progressive Traffic Migration)
-# Priority 15 (Evaluated before default Stage 8 rule)
-# Blue  = Stage 8 EC2 ASG Target Group
-# Green = Stage 9 EKS Monolith Target Group
-# ------------------------------------------------------------------------------
+resource "aws_lb_listener_rule" "user_service" {
+  count        = var.enable_user_path_routing ? 1 : 0
+  listener_arn = var.alb_listener_arn
+  priority     = local.path_priority_user
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.stage9_user.arn
+  }
+
+  condition {
+    path_pattern { values = ["/api/users", "/api/users/*"] }
+  }
+
+  dynamic "condition" {
+    for_each = var.custom_header_name != "" && var.custom_header_value != "" ? [1] : []
+    content {
+      http_header {
+        http_header_name = var.custom_header_name
+        values           = [var.custom_header_value]
+      }
+    }
+  }
+}
+
+# Catch-all for the migration. Path rules above take precedence.
 resource "aws_lb_listener_rule" "blue_green_weighted" {
   count        = var.enable_blue_green_weighted ? 1 : 0
   listener_arn = var.alb_listener_arn
-  priority     = 15
+  priority     = local.blue_green_priority
 
   action {
     type = "forward"
@@ -205,7 +214,6 @@ resource "aws_lb_listener_rule" "blue_green_weighted" {
         arn    = var.stage8_target_group_arn
         weight = var.blue_weight
       }
-
       target_group {
         arn    = aws_lb_target_group.stage9_monolith.arn
         weight = var.green_weight
@@ -213,13 +221,8 @@ resource "aws_lb_listener_rule" "blue_green_weighted" {
     }
   }
 
-  condition {
-    path_pattern {
-      values = ["/*"]
-    }
-  }
+  condition { path_pattern { values = ["/*"] } }
 
-  # Match CloudFront custom verification header if provided
   dynamic "condition" {
     for_each = var.custom_header_name != "" && var.custom_header_value != "" ? [1] : []
     content {
@@ -229,11 +232,4 @@ resource "aws_lb_listener_rule" "blue_green_weighted" {
       }
     }
   }
-
-  tags = merge(
-    var.tags,
-    {
-      Name = "${var.project_name}-${var.environment}-rule-blue-green"
-    }
-  )
 }

@@ -21,3 +21,7 @@ green_weight = 0
 # Path-based routing triggers (enable when microservices are validated)
 enable_product_path_routing = false
 enable_order_path_routing   = false
+
+# Existing data services (set these from Stage 8 outputs)
+db_host    = "REPLACE_WITH_STAGE8_RDS_ENDPOINT"
+redis_host = "REPLACE_WITH_STAGE8_REDIS_ENDPOINT"

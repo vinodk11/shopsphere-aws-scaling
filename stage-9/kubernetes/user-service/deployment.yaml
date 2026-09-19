@@ -30,7 +30,7 @@ spec:
         fsGroup: 10001
       containers:
         - name: user
-          image: 165772574557.dkr.ecr.us-east-1.amazonaws.com/shopsphere-stage9-user:latest
+          image: ${USER_IMAGE}
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

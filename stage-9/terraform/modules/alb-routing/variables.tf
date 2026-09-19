@@ -1,72 +1,73 @@
 variable "project_name" {
-  description = "Project name identifier"
-  type        = string
+  type = string
 }
 
 variable "environment" {
-  description = "Deployment environment"
-  type        = string
+  type = string
 }
 
 variable "vpc_id" {
-  description = "VPC ID where target groups are created"
-  type        = string
+  type = string
 }
 
 variable "alb_listener_arn" {
-  description = "ARN of the existing Application Load Balancer HTTP Listener"
-  type        = string
+  type = string
 }
 
 variable "stage8_target_group_arn" {
-  description = "ARN of the existing Stage 8 (Blue) Target Group"
-  type        = string
+  type = string
 }
 
 variable "blue_weight" {
-  description = "Traffic weight for Stage 8 (Blue) Target Group (0 - 100)"
-  type        = number
-  default     = 100
+  type    = number
+  default = 100
+  validation {
+    condition     = var.blue_weight >= 0 && var.blue_weight <= 100
+    error_message = "blue_weight must be between 0 and 100."
+  }
 }
 
 variable "green_weight" {
-  description = "Traffic weight for Stage 9 (Green) Target Group (0 - 100)"
-  type        = number
-  default     = 0
+  type    = number
+  default = 0
+  validation {
+    condition     = var.green_weight >= 0 && var.green_weight <= 100
+    error_message = "green_weight must be between 0 and 100."
+  }
 }
 
 variable "enable_blue_green_weighted" {
-  description = "Enable the weighted Blue/Green listener rule"
-  type        = bool
-  default     = true
+  type    = bool
+  default = true
 }
 
 variable "enable_product_path_routing" {
-  description = "Enable routing /api/products* to Stage 9 Product Service"
-  type        = bool
-  default     = false
+  type    = bool
+  default = false
 }
 
 variable "enable_order_path_routing" {
-  description = "Enable routing /api/orders* to Stage 9 Order Service"
-  type        = bool
-  default     = false
+  type    = bool
+  default = false
+}
+
+variable "enable_user_path_routing" {
+  type    = bool
+  default = false
 }
 
 variable "custom_header_name" {
-  description = "Custom header name for CloudFront origin verification"
-  type        = string
-  default     = ""
+  type    = string
+  default = ""
 }
 
 variable "custom_header_value" {
-  description = "Custom header value for CloudFront origin verification"
-  type        = string
-  default     = ""
+  type      = string
+  default   = ""
+  sensitive = true
 }
 
 variable "tags" {
-  description = "Standard tags to assign to resources"
-  type        = map(string)
-  default     = {}
+  type    = map(string)
+  default = {}
 }

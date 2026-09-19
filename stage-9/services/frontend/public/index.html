@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShopSphere - Stage 9: Amazon EKS & Microservices</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    .badge-sso { background: #8b5cf6; color: #fff; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 700; margin-left: 0.5rem; }
+    .sso-btn { display: flex; align-items: center; justify-content: center; gap: 0.5rem; width: 100%; padding: 0.75rem; border-radius: 8px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); background: #1e293b; color: #fff; margin-bottom: 0.5rem; transition: all 0.2s ease; }
+    .sso-btn:hover { background: #334155; transform: translateY(-1px); }
+    .sso-btn.aws { border-color: #f59e0b; }
+    .sso-btn.google { border-color: #3b82f6; }
+    .sso-btn.github { border-color: #94a3b8; }
+    .modal-tab-header { display: flex; border-bottom: 1px solid var(--border-color); margin-bottom: 1.2rem; }
+    .modal-tab-btn { flex: 1; padding: 0.75rem; background: none; border: none; color: var(--text-muted); font-weight: 600; cursor: pointer; text-align: center; }
+    .modal-tab-btn.active { color: var(--accent-green); border-bottom: 2px solid var(--accent-green); }
+    .auth-badge { display: flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.6rem; border-radius: 6px; background: rgba(16, 185, 129, 0.15); color: #34d399; font-size: 0.85rem; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <!-- Stage Indicator Banner -->
+  <div class="stage-banner" style="background: linear-gradient(90deg, #1e1b4b 0%, #312e81 25%, #064e3b 60%, #047857 100%);">
+    <div class="container banner-content">
+      <span class="badge" style="background: #6366f1;">AWS Stage 9: Amazon EKS & Microservices</span>
+      <span class="stage-desc">Decoupled Microservices &bull; Amazon EKS Cluster &bull; Product Service (8081) &bull; Order Service (8082) &bull; User &amp; SSO Service (8083) &bull; CloudFront &amp; WAF</span>
+      <div id="systemHealthBadge" class="health-badge"><span class="pulse"></span> Probing EKS Cluster...</div>
+    </div>
+  </div>
+
+  <!-- Header / Navbar -->
+  <header class="navbar">
+    <div class="container nav-container">
+      <div class="brand">
+        <div class="logo-icon">🪐</div>
+        <div>
+          <h1>ShopSphere</h1>
+          <span class="tagline">AWS Architecture Evolution &bull; Stage 9 (Amazon EKS &amp; Microservices)</span>
+        </div>
+      </div>
+      <div class="nav-actions">
+        <div id="userProfileArea">
+          <button id="ssoModalBtn" class="btn btn-secondary" onclick="openAuthModal()">
+            <span>👤 Sign In / SSO</span>
+          </button>
+        </div>
+        <button id="systemInfoBtn" class="btn btn-secondary">Architecture Visualizer</button>
+        <button id="cartBtn" class="btn btn-primary">
+          <span>🛒 Cart</span>
+          <span id="cartCount" class="cart-count">0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container">
+      <h2>Decoupled Kubernetes Microservices &amp; Enterprise SSO</h2>
+      <p>Autonomous, independently scalable microservices deployed on Amazon EKS Multi-AZ worker nodes with AWS Load Balancer Controller TargetGroupBinding, Redis catalog caching, SQS async event processing, and Enterprise Single Sign-On (SSO).</p>
+
+      <!-- Stage 9 Microservices Architecture Visualizer -->
+      <div class="event-pipeline-card">
+        <div class="event-pipeline-header">
+          <div class="event-pipeline-title">
+            <span>☸️ Amazon EKS Microservices Topology &amp; Service Mesh</span>
+          </div>
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-secondary btn-sm" onclick="probeAllServices()">
+              <span>🔄 Refresh Topology</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="openAuthModal()">
+              <span>⚡ SSO Portal</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="pipeline-flow">
+          <!-- Service 1: Frontend UI Service -->
+          <div class="flow-step security-active">
+            <div class="flow-step-header">
+              <span>🖥️</span>
+              <span>1. Frontend UI</span>
+            </div>
+            <div class="flow-step-desc">Web App &amp; Dashboard</div>
+            <div class="flow-metric">Port: <span id="fePort" style="color: var(--accent-green);">8080 (30080)</span></div>
+          </div>
+
+          <!-- Service 2: Product Microservice -->
+          <div class="flow-step security-active">
+            <div class="flow-step-header">
+              <span>📦</span>
+              <span>2. Product Service</span>
+            </div>
+            <div class="flow-step-desc">RDS + Redis Cache</div>
+            <div class="flow-metric">Path: <span id="prodStatus" style="color: var(--accent-green);">/api/products*</span></div>
+          </div>
+
+          <!-- Service 3: Order Microservice -->
+          <div class="flow-step security-active">
+            <div class="flow-step-header">
+              <span>💳</span>
+              <span>3. Order Service</span>
+            </div>
+            <div class="flow-step-desc">RDS + SQS Event Bus</div>
+            <div class="flow-metric">Path: <span id="ordStatus" style="color: var(--accent-green);">/api/orders*</span></div>
+          </div>
+
+          <!-- Service 4: User & SSO Service -->
+          <div class="flow-step waf-active">
+            <div class="flow-step-header">
+              <span>🔑</span>
+              <span>4. User &amp; SSO Service</span>
+            </div>
+            <div class="flow-step-desc">Auth &amp; IAM Federation</div>
+            <div class="flow-metric">Path: <span id="userStatus" style="color: var(--accent-purple);">/api/users*</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Catalog Section -->
+  <main class="container">
+    <div class="catalog-header" style="display: flex; justify-content: space-between; align-items: center; margin: 2rem 0 1rem;">
+      <h3>Featured Cloud Hardware &amp; Peripherals</h3>
+      <div id="catalogSourceBadge" style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--text-muted);">
+        Microservice: <span style="color: var(--accent-green);">EKS Product Service (Port 8081)</span>
+      </div>
+    </div>
+
+    <!-- Product Grid -->
+    <div id="productGrid" class="product-grid">
+      <div style="grid-column: 1/-1; text-align: center; padding: 3rem;">
+        <span class="pulse"></span> Loading products from Stage 9 EKS Product Microservice...
+      </div>
+    </div>
+  </main>
+
+  <!-- Cart Modal -->
+  <div id="cartModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Shopping Cart</h3>
+        <button class="modal-close" onclick="closeCartModal()">&times;</button>
+      </div>
+      <div id="cartItemsList" style="margin: 1rem 0; max-height: 250px; overflow-y: auto;">
+        <p style="color: var(--text-muted); text-align: center;">Your cart is empty.</p>
+      </div>
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+        <div>Total: <strong id="cartTotalSum">$0.00</strong></div>
+        <button id="checkoutBtn" class="btn btn-primary" onclick="submitOrder()">Place Order via EKS Microservice</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SSO & Authentication Modal -->
+  <div id="authModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="max-width: 440px;">
+      <div class="modal-header">
+        <h3>Identity &amp; Single Sign-On</h3>
+        <button class="modal-close" onclick="closeAuthModal()">&times;</button>
+      </div>
+
+      <div class="modal-tab-header">
+        <button id="tabSso" class="modal-tab-btn active" onclick="switchAuthTab('sso')">Enterprise SSO</button>
+        <button id="tabLogin" class="modal-tab-btn" onclick="switchAuthTab('login')">Sign In</button>
+        <button id="tabSignup" class="modal-tab-btn" onclick="switchAuthTab('signup')">Sign Up</button>
+      </div>
+
+      <!-- Tab 1: Single Sign-On (SSO) -->
+      <div id="tabContentSso">
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.2rem;">
+          Authenticate using your organization's cloud identity provider. Tokens are verified via the <strong>Stage 9 User &amp; SSO Microservice</strong>.
+        </p>
+
+        <button class="sso-btn aws" onclick="doSsoLogin('aws-iam', 'alex.developer@aws-iam.internal', 'Alex Developer (AWS SSO)')">
+          <span>⚡ Continue with AWS IAM Identity Center</span>
+        </button>
+        <button class="sso-btn google" onclick="doSsoLogin('google', 'alex.cloud@google.com', 'Alex Developer (Google Workspace)')">
+          <span>🌐 Continue with Google Enterprise</span>
+        </button>
+        <button class="sso-btn github" onclick="doSsoLogin('github', 'alex-dev@github.com', 'Alex Developer (GitHub SSO)')">
+          <span>🐙 Continue with GitHub Enterprise</span>
+        </button>
+      </div>
+
+      <!-- Tab 2: Standard Sign In -->
+      <div id="tabContentLogin" style="display: none;">
+        <form onsubmit="doStandardLogin(event)">
+          <div style="margin-bottom: 1rem;">
+            <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem;">Email or Username</label>
+            <input id="loginEmail" type="text" class="input-field" placeholder="alex@shopsphere.io" required style="width: 100%; padding: 0.6rem; border-radius: 6px; background: #0f172a; border: 1px solid var(--border-color); color: #fff;">
+          </div>
+          <div style="margin-bottom: 1.2rem;">
+            <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem;">Password</label>
+            <input id="loginPassword" type="password" class="input-field" placeholder="••••••••" required style="width: 100%; padding: 0.6rem; border-radius: 6px; background: #0f172a; border: 1px solid var(--border-color); color: #fff;">
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%;">Sign In</button>
+        </form>
+      </div>
+
+      <!-- Tab 3: Sign Up -->
+      <div id="tabContentSignup" style="display: none;">
+        <form onsubmit="doStandardSignup(event)">
+          <div style="margin-bottom: 0.8rem;">
+            <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem;">Full Name</label>
+            <input id="regName" type="text" placeholder="Alex Developer" required style="width: 100%; padding: 0.6rem; border-radius: 6px; background: #0f172a; border: 1px solid var(--border-color); color: #fff;">
+          </div>
+          <div style="margin-bottom: 0.8rem;">
+            <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem;">Email Address</label>
+            <input id="regEmail" type="email" placeholder="alex@example.com" required style="width: 100%; padding: 0.6rem; border-radius: 6px; background: #0f172a; border: 1px solid var(--border-color); color: #fff;">
+          </div>
+          <div style="margin-bottom: 1.2rem;">
+            <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem;">Password</label>
+            <input id="regPassword" type="password" placeholder="Choose a strong password" required style="width: 100%; padding: 0.6rem; border-radius: 6px; background: #0f172a; border: 1px solid var(--border-color); color: #fff;">
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%;">Create Account</button>
+        </form>
+      </div>
+
+      <div id="authStatusMsg" style="margin-top: 1rem; font-size: 0.85rem; text-align: center;"></div>
+    </div>
+  </div>
+
+  <!-- Architecture Modal -->
+  <div id="systemModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="max-width: 600px;">
+      <div class="modal-header">
+        <h3>Stage 9 Amazon EKS Microservices Architecture</h3>
+        <button class="modal-close" onclick="closeSystemModal()">&times;</button>
+      </div>
+      <div style="font-size: 0.9rem; line-height: 1.6; color: var(--text-muted); margin-top: 1rem;">
+        <p><strong>Decoupled Microservice Topology:</strong></p>
+        <ul style="margin: 0.5rem 0 1rem 1.5rem; color: var(--text-main);">
+          <li><strong>Frontend Service</strong> (Port <code>8080</code>): Serves the Web App &amp; SSO Client.</li>
+          <li><strong>Product Service</strong> (Port <code>8081</code>): Serves <code>/api/products*</code> via PostgreSQL &amp; Redis.</li>
+          <li><strong>Order Service</strong> (Port <code>8082</code>): Serves <code>/api/orders*</code> and dispatches SQS events.</li>
+          <li><strong>User &amp; SSO Service</strong> (Port <code>8083</code>): Handles User Registration, Authentication &amp; Enterprise SSO.</li>
+        </ul>
+        <p><strong>Kubernetes Orchestration:</strong></p>
+        <ul style="margin: 0.5rem 0 1rem 1.5rem; color: var(--text-main);">
+          <li>Multi-AZ EKS Managed Node Group with Instance-level TargetGroupBinding.</li>
+          <li>Weighted Blue/Green ALB progressive migration controller.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <footer style="margin-top: auto; padding: 2rem 0; border-top: 1px solid var(--border-color); text-align: center; color: var(--text-muted); font-size: 0.85rem;">
+    <p>&copy; 2026 ShopSphere Project &bull; Built for AWS Architecture Learning</p>
+    <p style="color: var(--accent-green); margin-top: 0.3rem;">Stage 9: Amazon EKS &bull; Microservices Decomposition &bull; Enterprise SSO &bull; CloudFront &bull; WAF</p>
+  </footer>
+
+  <!-- Application Logic -->
+  <script>
+    let cart = [];
+    let currentUser = null;
+
+    // Load initial data on startup
+    document.addEventListener('DOMContentLoaded', () => {
+      checkStoredUser();
+      probeHealth();
+      loadProducts();
+    });
+
+    // Probe Frontend and EKS Health
+    async function probeHealth() {
+      try {
+        const res = await fetch('/health?cb=' + Date.now());
+        const data = await res.json();
+        const badge = document.getElementById('systemHealthBadge');
+        if (data.status === 'UP') {
+          badge.innerHTML = `<span style="color: #10b981;">●</span> EKS Pod: ${data.servingInstance?.hostname || 'Running'}`;
+        }
+      } catch (err) {
+        console.warn('Health probe failed:', err);
+      }
+    }
+
+    // Load Products from Product Microservice
+    async function loadProducts() {
+      const grid = document.getElementById('productGrid');
+      try {
+        const res = await fetch('/api/products?cb=' + Date.now());
+        const json = await res.json();
+        const products = json.data || [];
+
+        if (products.length === 0) {
+          grid.innerHTML = '<p style="text-align: center; grid-column: 1/-1;">No products found.</p>';
+          return;
+        }
+
+        grid.innerHTML = products.map(p => `
+          <div class="product-card" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column;">
+            <img src="${p.image_url || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500'}" alt="${p.name}" style="height: 180px; width: 100%; object-fit: cover;">
+            <div style="padding: 1.2rem; display: flex; flex-direction: column; flex: 1;">
+              <span style="font-size: 0.75rem; color: var(--accent-green); text-transform: uppercase; font-weight: 700;">${p.category_name || 'Electronics'}</span>
+              <h4 style="margin: 0.3rem 0; font-size: 1.05rem;">${p.name}</h4>
+              <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem; flex: 1;">${p.description || ''}</p>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto;">
+                <span style="font-size: 1.2rem; font-weight: 800; color: #fff;">$${parseFloat(p.price).toFixed(2)}</span>
+                <button class="btn btn-primary btn-sm" onclick="addToCart(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.price})">Add to Cart</button>
+              </div>
+            </div>
+          </div>
+        `).join('');
+
+        if (json.source) {
+          document.getElementById('catalogSourceBadge').innerHTML = `Source: <strong style="color: var(--accent-green);">${json.source.toUpperCase()}</strong> (EKS Product Microservice)`;
+        }
+      } catch (err) {
+        grid.innerHTML = `<p style="text-align: center; grid-column: 1/-1; color: var(--accent-red);">Failed to connect to Product Microservice: ${err.message}</p>`;
+      }
+    }
+
+    // Cart Management
+    function addToCart(id, name, price) {
+      const item = cart.find(i => i.id === id);
+      if (item) {
+        item.quantity += 1;
+      } else {
+        cart.push({ id, name, price, quantity: 1 });
+      }
+      updateCartUI();
+    }
+
+    function updateCartUI() {
+      const count = cart.reduce((sum, item) => sum + item.quantity, 0);
+      document.getElementById('cartCount').innerText = count;
+
+      const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      document.getElementById('cartTotalSum').innerText = `$${total.toFixed(2)}`;
+
+      const list = document.getElementById('cartItemsList');
+      if (cart.length === 0) {
+        list.innerHTML = '<p style="color: var(--text-muted); text-align: center;">Your cart is empty.</p>';
+      } else {
+        list.innerHTML = cart.map(item => `
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid var(--border-color);">
+            <div><strong>${item.name}</strong> &times; ${item.quantity}</div>
+            <div>$${(item.price * item.quantity).toFixed(2)}</div>
+          </div>
+        `).join('');
+      }
+    }
+
+    // Submit Order to Order Microservice
+    async function submitOrder() {
+      if (cart.length === 0) return alert('Cart is empty!');
+      const btn = document.getElementById('checkoutBtn');
+      btn.disabled = true;
+      btn.innerText = 'Dispatching to Order Microservice...';
+
+      const customerName = currentUser ? currentUser.fullName : 'Alex Developer';
+      const customerEmail = currentUser ? currentUser.email : 'alex@stage9.internal';
+      const totalAmount = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+      try {
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customerName,
+            customerEmail,
+            totalAmount,
+            items: cart
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          alert(`🎉 Order #${data.orderId} created successfully via EKS Order Microservice!\nStatus: ${data.status}\nSQS Message: ${data.sqsMessageId || 'Dispatched'}`);
+          cart = [];
+          updateCartUI();
+          closeCartModal();
+        } else {
+          alert('Order error: ' + (data.message || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Failed to connect to Order Service: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Place Order via EKS Microservice';
+      }
+    }
+
+    // Authentication & SSO Logic
+    function checkStoredUser() {
+      const stored = localStorage.getItem('shopsphere_user');
+      if (stored) {
+        try {
+          currentUser = JSON.parse(stored);
+          renderUserUI();
+        } catch (e) {
+          localStorage.removeItem('shopsphere_user');
+        }
+      }
+    }
+
+    function renderUserUI() {
+      const area = document.getElementById('userProfileArea');
+      if (currentUser) {
+        area.innerHTML = `
+          <div class="auth-badge">
+            <span>👤 ${currentUser.fullName || currentUser.username}</span>
+            <span class="badge-sso">${(currentUser.authProvider || 'SSO').toUpperCase()}</span>
+            <button onclick="doLogout()" style="background: none; border: none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-left: 0.4rem;">Logout</button>
+          </div>
+        `;
+      } else {
+        area.innerHTML = `
+          <button id="ssoModalBtn" class="btn btn-secondary" onclick="openAuthModal()">
+            <span>👤 Sign In / SSO</span>
+          </button>
+        `;
+      }
+    }
+
+    function doLogout() {
+      currentUser = null;
+      localStorage.removeItem('shopsphere_user');
+      renderUserUI();
+    }
+
+    async function doSsoLogin(provider, email, fullName) {
+      const msg = document.getElementById('authStatusMsg');
+      msg.innerHTML = `<span class="pulse"></span> Authenticating via ${provider.toUpperCase()} Identity Federation...`;
+
+      try {
+        const res = await fetch('/api/users/sso/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider, email, fullName })
+        });
+        const data = await res.json();
+        if (data.success) {
+          currentUser = data.user;
+          localStorage.setItem('shopsphere_user', JSON.stringify(currentUser));
+          renderUserUI();
+          closeAuthModal();
+          alert(`✅ Authenticated via ${provider.toUpperCase()} Single Sign-On!\nWelcome, ${currentUser.fullName}!`);
+        } else {
+          msg.innerHTML = `<span style="color: var(--accent-red);">${data.message}</span>`;
+        }
+      } catch (err) {
+        msg.innerHTML = `<span style="color: var(--accent-red);">SSO Service error: ${err.message}</span>`;
+      }
+    }
+
+    async function doStandardLogin(e) {
+      e.preventDefault();
+      const email = document.getElementById('loginEmail').value;
+      const password = document.getElementById('loginPassword').value;
+      const msg = document.getElementById('authStatusMsg');
+      msg.innerHTML = '<span class="pulse"></span> Verifying credentials...';
+
+      try {
+        const res = await fetch('/api/users/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (data.success) {
+          currentUser = data.user;
+          localStorage.setItem('shopsphere_user', JSON.stringify(currentUser));
+          renderUserUI();
+          closeAuthModal();
+        } else {
+          msg.innerHTML = `<span style="color: var(--accent-red);">${data.message}</span>`;
+        }
+      } catch (err) {
+        msg.innerHTML = `<span style="color: var(--accent-red);">Login Service error: ${err.message}</span>`;
+      }
+    }
+
+    async function doStandardSignup(e) {
+      e.preventDefault();
+      const fullName = document.getElementById('regName').value;
+      const email = document.getElementById('regEmail').value;
+      const password = document.getElementById('regPassword').value;
+      const msg = document.getElementById('authStatusMsg');
+      msg.innerHTML = '<span class="pulse"></span> Creating user account on EKS User Service...';
+
+      try {
+        const res = await fetch('/api/users/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fullName, email, password })
+        });
+        const data = await res.json();
+        if (data.success) {
+          currentUser = data.user;
+          localStorage.setItem('shopsphere_user', JSON.stringify(currentUser));
+          renderUserUI();
+          closeAuthModal();
+          alert(`🎉 User account created!\nWelcome to ShopSphere Stage 9, ${currentUser.fullName}!`);
+        } else {
+          msg.innerHTML = `<span style="color: var(--accent-red);">${data.message}</span>`;
+        }
+      } catch (err) {
+        msg.innerHTML = `<span style="color: var(--accent-red);">Registration error: ${err.message}</span>`;
+      }
+    }
+
+    function switchAuthTab(tab) {
+      document.getElementById('tabSso').classList.toggle('active', tab === 'sso');
+      document.getElementById('tabLogin').classList.toggle('active', tab === 'login');
+      document.getElementById('tabSignup').classList.toggle('active', tab === 'signup');
+
+      document.getElementById('tabContentSso').style.display = tab === 'sso' ? 'block' : 'none';
+      document.getElementById('tabContentLogin').style.display = tab === 'login' ? 'block' : 'none';
+      document.getElementById('tabContentSignup').style.display = tab === 'signup' ? 'block' : 'none';
+      document.getElementById('authStatusMsg').innerHTML = '';
+    }
+
+    // Modal helpers
+    function openAuthModal() { document.getElementById('authModal').style.display = 'flex'; }
+    function closeAuthModal() { document.getElementById('authModal').style.display = 'none'; }
+    document.getElementById('cartBtn').onclick = () => { document.getElementById('cartModal').style.display = 'flex'; };
+    function closeCartModal() { document.getElementById('cartModal').style.display = 'none'; }
+    document.getElementById('systemInfoBtn').onclick = () => { document.getElementById('systemModal').style.display = 'flex'; };
+    function closeSystemModal() { document.getElementById('systemModal').style.display = 'none'; }
+
+    // Topology Health Probing
+    async function probeAllServices() {
+      probeHealth();
+      loadProducts();
+      try {
+        const ordRes = await fetch('/api/orders?cb=' + Date.now());
+        if (ordRes.ok) document.getElementById('ordStatus').innerText = 'HEALTHY (8082)';
+      } catch(e) {}
+      try {
+        const userRes = await fetch('/api/users/profile?cb=' + Date.now());
+        if (userRes.ok) document.getElementById('userStatus').innerText = 'SSO READY (8083)';
+      } catch(e) {}
+    }
+  </script>
+</body>
+</html>

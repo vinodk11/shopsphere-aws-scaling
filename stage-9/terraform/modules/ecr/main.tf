@@ -4,13 +4,13 @@
 # ==============================================================================
 
 locals {
-  services = ["product", "order", "user"]
+  services = ["frontend", "product", "order", "user"]
 }
 
 resource "aws_ecr_repository" "microservices" {
   for_each             = toset(local.services)
   name                 = "${var.project_name}-${var.environment}-${each.key}"
-  image_tag_mutability = "MUTABLE"
+  image_tag_mutability = "IMMUTABLE"
 
   image_scanning_configuration {
     scan_on_push = true

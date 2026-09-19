@@ -73,8 +73,18 @@ output "ecr_user_repository_url" {
 # Ingress & Blue/Green Migration Routing Outputs
 # ------------------------------------------------------------------------------
 
+output "ecr_frontend_repository_url" {
+  description = "ECR Repository URL for Frontend Service"
+  value       = module.ecr.frontend_repository_url
+}
+
+output "stage9_frontend_target_group_arn" {
+  description = "ARN of the Stage 9 EKS Frontend Target Group"
+  value       = module.alb_routing.stage9_frontend_target_group_arn
+}
+
 output "stage9_monolith_target_group_arn" {
-  description = "ARN of the Stage 9 EKS Monolith Target Group"
+  description = "ARN of the Stage 9 EKS Monolith/Frontend Target Group"
   value       = module.alb_routing.stage9_monolith_target_group_arn
 }
 
@@ -99,4 +109,47 @@ output "current_traffic_weights" {
     blue_stage8_asg_percent  = var.blue_weight
     green_stage9_eks_percent = var.green_weight
   }
+}
+
+output "stage9_user_target_group_arn" {
+  description = "ARN of the Stage 9 EKS User Service Target Group"
+  value       = module.alb_routing.stage9_user_target_group_arn
+}
+
+output "stage8_target_group_arn" {
+  description = "Existing Stage 8 target group ARN used as Blue"
+  value       = local.stage8_tg_arn
+}
+
+
+output "aws_load_balancer_controller_role_arn" {
+  description = "IRSA role ARN for AWS Load Balancer Controller"
+  value       = module.iam.aws_load_balancer_controller_role_arn
+}
+
+output "order_service_sqs_role_arn" {
+  description = "IRSA role ARN for Order Service SQS access"
+  value       = module.iam.order_service_sqs_role_arn
+}
+
+
+output "sqs_queue_url" {
+  description = "Existing Stage 8 SQS queue URL"
+  value       = data.aws_sqs_queue.orders[0].url
+}
+
+output "db_host" {
+  value = var.db_host
+}
+
+output "redis_host" {
+  value = var.redis_host
+}
+
+output "db_name" {
+  value = var.db_name
+}
+
+output "db_user" {
+  value = var.db_user
 }

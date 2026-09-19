@@ -76,14 +76,37 @@ variable "sqs_queue_arn" {
 variable "custom_header_name" {
   description = "Header name for CloudFront origin verification (matches Stage 8)"
   type        = string
-  default     = ""
+  default     = "X-Origin-Verify"
 }
 
 variable "custom_header_value" {
   description = "Secret header value for CloudFront origin verification"
   type        = string
-  default     = ""
+  default     = "ShopSphereEdgeSecretToken2026Verify"
   sensitive   = true
+}
+
+
+variable "db_host" {
+  description = "Existing Stage 8 RDS endpoint used by Stage 9. Set explicitly; do not discover by guessing."
+  type        = string
+  default     = ""
+}
+
+variable "redis_host" {
+  description = "Existing Stage 8 ElastiCache Redis endpoint used by Stage 9."
+  type        = string
+  default     = ""
+}
+
+variable "db_name" {
+  type    = string
+  default = "shopspheredb"
+}
+
+variable "db_user" {
+  type    = string
+  default = "shopsphere_user"
 }
 
 # ------------------------------------------------------------------------------
@@ -150,6 +173,12 @@ variable "enable_product_path_routing" {
 
 variable "enable_order_path_routing" {
   description = "Direct /api/orders* traffic to EKS Order Service"
+  type        = bool
+  default     = false
+}
+
+variable "enable_user_path_routing" {
+  description = "Direct /api/users* traffic to EKS User Service"
   type        = bool
   default     = false
 }

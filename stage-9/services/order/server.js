@@ -49,6 +49,11 @@ async function initDb() {
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    // Safe column migrations for existing tables
+    await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS items JSONB;`);
+    await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS sqs_message_id VARCHAR(100);`);
+    await pool.query(`ALTER TABLE orders ALTER COLUMN shipping_address DROP NOT NULL;`);
+    await pool.query(`ALTER TABLE orders ALTER COLUMN shipping_address SET DEFAULT 'Standard Delivery';`);
     console.log('[OrderService] Orders table verified in PostgreSQL');
   } catch (err) {
     console.warn(`[OrderService] DB table init warning: ${err.message}`);
