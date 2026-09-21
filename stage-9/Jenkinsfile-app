@@ -136,7 +136,20 @@ pipeline {
 
     stage('Import Infrastructure Outputs') {
       steps {
-        copyArtifacts(projectName: env.INFRA_JOB, selector: specific('lastSuccessful'), filter: 'stage-9/terraform/stage9-outputs.json', fingerprintArtifacts: true)
+        sh """
+          mkdir -p stage-9/terraform
+          if [ -f "../${env.INFRA_JOB}/stage-9/terraform/stage9-outputs.json" ]; then
+            cp "../${env.INFRA_JOB}/stage-9/terraform/stage9-outputs.json" stage-9/terraform/stage9-outputs.json
+          elif [ -f "/var/lib/jenkins/workspace/${env.INFRA_JOB}/stage-9/terraform/stage9-outputs.json" ]; then
+            cp "/var/lib/jenkins/workspace/${env.INFRA_JOB}/stage-9/terraform/stage9-outputs.json" stage-9/terraform/stage9-outputs.json
+          elif [ -d "/var/lib/jenkins/jobs/${env.INFRA_JOB}/builds" ]; then
+            LAST_BUILD=\$(awk '\$1=="lastSuccessfulBuild"{print \$2}' "/var/lib/jenkins/jobs/${env.INFRA_JOB}/builds/permalinks")
+            if [ -n "\$LAST_BUILD" ] && [ -f "/var/lib/jenkins/jobs/${env.INFRA_JOB}/builds/\$LAST_BUILD/archive/stage-9/terraform/stage9-outputs.json" ]; then
+              cp "/var/lib/jenkins/jobs/${env.INFRA_JOB}/builds/\$LAST_BUILD/archive/stage-9/terraform/stage9-outputs.json" stage-9/terraform/stage9-outputs.json
+            fi
+          fi
+          test -f stage-9/terraform/stage9-outputs.json || { echo "stage9-outputs.json not found!"; exit 1; }
+        """
         script {
           def outputs = readJSON file: 'stage-9/terraform/stage9-outputs.json'
           env.EKS_CLUSTER = outputs.eks_cluster_name.value
