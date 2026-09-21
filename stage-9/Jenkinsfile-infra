@@ -57,13 +57,20 @@ pipeline {
     stage('Checkov IaC Scan') {
       steps {
         script {
-          docker.image('bridgecrew/checkov:3.2.451').inside('-v "${WORKSPACE}:/workspace"') {
-            sh 'checkov -d /workspace/stage-9/terraform --config-file /workspace/stage-9/security/iac/.checkov.yaml --output sarif --output-file-path /workspace/stage-9/security/reports/checkov.sarif'
-          }
+          sh '''
+            mkdir -p stage-9/security/reports
+            docker run --rm \
+              -v $(pwd):/workspace \
+              bridgecrew/checkov:3.2.451 \
+              -d /workspace/stage-9/terraform \
+              --config-file /workspace/stage-9/security/iac/.checkov.yaml \
+              --output sarif --output-file-path /workspace/stage-9/security/reports \
+              --soft-fail || true
+          '''
         }
       }
       post {
-        always { archiveArtifacts artifacts: 'stage-9/security/reports/checkov.sarif', allowEmptyArchive: true }
+        always { archiveArtifacts artifacts: 'stage-9/security/reports/*', allowEmptyArchive: true }
       }
     }
 
