@@ -221,7 +221,11 @@ resource "aws_lb_listener_rule" "blue_green_weighted" {
     }
   }
 
-  condition { path_pattern { values = ["/*"] } }
+  condition {
+    path_pattern {
+      values = ["/*"]
+    }
+  }
 
   dynamic "condition" {
     for_each = var.custom_header_name != "" && var.custom_header_value != "" ? [1] : []
