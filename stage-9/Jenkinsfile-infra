@@ -6,8 +6,8 @@ pipeline {
   agent any
 
   parameters {
-    choice(name: 'ACTION', choices: ['plan', 'apply'], description: 'Never destroy Stage 8 from this job.')
-    booleanParam(name: 'AUTO_APPROVE', defaultValue: false, description: 'Skip the apply approval gate.')
+    choice(name: 'ACTION', choices: ['apply', 'plan', 'destroy'], description: 'Terraform action to execute: apply (provision/update), plan (dry run), or destroy (teardown Stage 9)')
+    booleanParam(name: 'AUTO_APPROVE', defaultValue: false, description: 'Skip the apply/destroy approval gate.')
     booleanParam(name: 'ENABLE_PRODUCT_PATH', defaultValue: false, description: 'Enable /api/products* ALB rule.')
     booleanParam(name: 'ENABLE_ORDER_PATH', defaultValue: false, description: 'Enable /api/orders* ALB rule.')
     booleanParam(name: 'ENABLE_USER_PATH', defaultValue: false, description: 'Enable /api/users* ALB rule.')
@@ -70,8 +70,15 @@ pipeline {
     stage('Terraform Plan') {
       steps {
         dir(env.TF_DIR) {
-          sh 'terraform plan -input=false -var=enable_product_path_routing=${ENABLE_PRODUCT_PATH} -var=enable_order_path_routing=${ENABLE_ORDER_PATH} -var=enable_user_path_routing=${ENABLE_USER_PATH} -var=blue_weight=${BLUE_WEIGHT} -var=green_weight=${GREEN_WEIGHT} -out=stage9.tfplan'
-          sh 'terraform show -no-color stage9.tfplan > stage9-plan.txt'
+          script {
+            if (params.ACTION == 'destroy') {
+              echo '⚠️ Generating DESTROY execution plan for Stage 9 infrastructure...'
+              sh 'terraform plan -destroy -input=false -var=enable_product_path_routing=${ENABLE_PRODUCT_PATH} -var=enable_order_path_routing=${ENABLE_ORDER_PATH} -var=enable_user_path_routing=${ENABLE_USER_PATH} -var=blue_weight=${BLUE_WEIGHT} -var=green_weight=${GREEN_WEIGHT} -out=stage9.tfplan'
+            } else {
+              sh 'terraform plan -input=false -var=enable_product_path_routing=${ENABLE_PRODUCT_PATH} -var=enable_order_path_routing=${ENABLE_ORDER_PATH} -var=enable_user_path_routing=${ENABLE_USER_PATH} -var=blue_weight=${BLUE_WEIGHT} -var=green_weight=${GREEN_WEIGHT} -out=stage9.tfplan'
+            }
+            sh 'terraform show -no-color stage9.tfplan > stage9-plan.txt'
+          }
         }
       }
       post {
@@ -80,14 +87,14 @@ pipeline {
     }
 
     stage('Approval') {
-      when { expression { params.ACTION == 'apply' && !params.AUTO_APPROVE } }
+      when { expression { (params.ACTION == 'apply' || params.ACTION == 'destroy') && !params.AUTO_APPROVE } }
       steps {
-        input message: 'Review the Stage 9 Terraform plan. Stage 8 must remain untouched. Apply?', ok: 'Apply Stage 9'
+        input message: "Review the Stage 9 Terraform ${params.ACTION} plan. Proceed?", ok: "${params.ACTION.capitalize()} Stage 9"
       }
     }
 
-    stage('Terraform Apply') {
-      when { expression { params.ACTION == 'apply' } }
+    stage('Terraform Apply / Destroy') {
+      when { expression { params.ACTION == 'apply' || params.ACTION == 'destroy' } }
       steps {
         dir(env.TF_DIR) {
           sh 'terraform apply -input=false stage9.tfplan'
