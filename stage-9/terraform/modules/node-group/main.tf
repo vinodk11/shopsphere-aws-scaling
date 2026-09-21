@@ -108,19 +108,7 @@ resource "aws_security_group" "node" {
   )
 }
 
-# Allow ALB to access NodePorts on EKS Cluster Security Group
-resource "aws_security_group_rule" "nodeports_from_alb" {
-  count                    = var.alb_security_group_id != "" && var.cluster_security_group_id != "" ? 1 : 0
-  type                     = "ingress"
-  from_port                = 30000
-  to_port                  = 32767
-  protocol                 = "tcp"
-  source_security_group_id = var.alb_security_group_id
-  security_group_id        = var.cluster_security_group_id
-  description              = "Allow ALB to access EKS worker NodePorts"
-}
-
-# Allow RDS access from Node Security Group & Cluster Security Group
+# Allow RDS access from Node Security Group
 resource "aws_security_group_rule" "rds_from_eks_nodes" {
   count                    = var.rds_security_group_id != "" ? 1 : 0
   type                     = "ingress"
@@ -132,18 +120,7 @@ resource "aws_security_group_rule" "rds_from_eks_nodes" {
   description              = "Allow PostgreSQL access from EKS worker nodes"
 }
 
-resource "aws_security_group_rule" "rds_from_eks_cluster" {
-  count                    = var.rds_security_group_id != "" && var.cluster_security_group_id != "" ? 1 : 0
-  type                     = "ingress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  source_security_group_id = var.cluster_security_group_id
-  security_group_id        = var.rds_security_group_id
-  description              = "Allow PostgreSQL access from EKS cluster security group"
-}
-
-# Allow Redis access from Node Security Group & Cluster Security Group
+# Allow Redis access from Node Security Group
 resource "aws_security_group_rule" "redis_from_eks_nodes" {
   count                    = var.redis_security_group_id != "" ? 1 : 0
   type                     = "ingress"
@@ -153,17 +130,6 @@ resource "aws_security_group_rule" "redis_from_eks_nodes" {
   source_security_group_id = aws_security_group.node.id
   security_group_id        = var.redis_security_group_id
   description              = "Allow Redis access from EKS worker nodes"
-}
-
-resource "aws_security_group_rule" "redis_from_eks_cluster" {
-  count                    = var.redis_security_group_id != "" && var.cluster_security_group_id != "" ? 1 : 0
-  type                     = "ingress"
-  from_port                = 6379
-  to_port                  = 6379
-  protocol                 = "tcp"
-  source_security_group_id = var.cluster_security_group_id
-  security_group_id        = var.redis_security_group_id
-  description              = "Allow Redis access from EKS cluster security group"
 }
 
 # 3. EKS Managed Node Group
