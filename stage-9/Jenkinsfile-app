@@ -20,7 +20,6 @@ pipeline {
     EKS_CLUSTER = 'shopsphere-stage9-eks'
     NAMESPACE = 'shopsphere-stage9'
     REPORT_DIR = 'stage-9/security/reports'
-    ECR_REGISTRY = ''
     FRONTEND_REPO = 'shopsphere-stage9-frontend'
     PRODUCT_REPO = 'shopsphere-stage9-product'
     ORDER_REPO = 'shopsphere-stage9-order'
@@ -107,8 +106,15 @@ pipeline {
 
     stage('Build, Scan & Push Images') {
       steps {
-        sh "aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin ${env.ECR_REGISTRY}"
         script {
+          if (!env.AWS_ACCOUNT_ID || env.AWS_ACCOUNT_ID == 'null') {
+            env.AWS_ACCOUNT_ID = sh(script: 'aws sts get-caller-identity --query Account --output text', returnStdout: true).trim()
+          }
+          env.ECR_REGISTRY = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
+          if (!env.RELEASE_TAG || env.RELEASE_TAG == 'null') {
+            env.RELEASE_TAG = "v9.${BUILD_NUMBER}-${env.GIT_COMMIT ? env.GIT_COMMIT.take(8) : 'manual'}"
+          }
+          sh "aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin ${env.ECR_REGISTRY}"
           def images = [
             [repo: env.FRONTEND_REPO, context: 'stage-9/services/frontend'],
             [repo: env.PRODUCT_REPO, context: 'stage-9/services/product'],
@@ -155,6 +161,18 @@ pipeline {
     stage('Render Kubernetes Manifests') {
       steps {
         script {
+          if (!env.AWS_ACCOUNT_ID || env.AWS_ACCOUNT_ID == 'null') {
+            env.AWS_ACCOUNT_ID = sh(script: 'aws sts get-caller-identity --query Account --output text', returnStdout: true).trim()
+          }
+          env.ECR_REGISTRY = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
+          if (!env.RELEASE_TAG || env.RELEASE_TAG == 'null') {
+            env.RELEASE_TAG = "v9.${BUILD_NUMBER}-${env.GIT_COMMIT ? env.GIT_COMMIT.take(8) : 'manual'}"
+          }
+          env.FRONTEND_IMAGE = "${env.ECR_REGISTRY}/${env.FRONTEND_REPO}:${env.RELEASE_TAG}"
+          env.PRODUCT_IMAGE = "${env.ECR_REGISTRY}/${env.PRODUCT_REPO}:${env.RELEASE_TAG}"
+          env.ORDER_IMAGE = "${env.ECR_REGISTRY}/${env.ORDER_REPO}:${env.RELEASE_TAG}"
+          env.USER_IMAGE = "${env.ECR_REGISTRY}/${env.USER_REPO}:${env.RELEASE_TAG}"
+
           sh 'rm -rf build-dist && mkdir -p build-dist/kubernetes'
           def files = findFiles(glob: 'stage-9/kubernetes/**/*.yaml')
           files.each { f ->
