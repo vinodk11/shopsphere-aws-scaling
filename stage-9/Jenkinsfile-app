@@ -59,7 +59,7 @@ pipeline {
       steps {
         sh '''
           docker run --rm -v $(pwd):/workspace -w /workspace node:20-alpine \
-            sh -c "for s in frontend product order user; do (cd stage-9/services/\\$s && npm ci --if-present && npm test --if-present); done"
+            sh -c "for s in frontend product order user; do echo \\"Running unit tests for \\$s...\\" && (cd stage-9/services/\\$s && npm test); done"
         '''
       }
     }
