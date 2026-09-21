@@ -153,3 +153,8 @@ output "db_name" {
 output "db_user" {
   value = var.db_user
 }
+
+output "vpc_id" {
+  description = "VPC ID where EKS is deployed"
+  value       = local.vpc_id
+}

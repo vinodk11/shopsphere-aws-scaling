@@ -126,7 +126,13 @@ pipeline {
           def outputs = readJSON file: 'stage-9/terraform/stage9-outputs.json'
           env.LBC_ROLE_ARN = outputs.aws_load_balancer_controller_role_arn.value
           env.EKS_CLUSTER_NAME = outputs.eks_cluster_name.value
+          env.VPC_ID = outputs.vpc_id?.value ?: sh(
+            script: "aws eks describe-cluster --name ${env.EKS_CLUSTER_NAME} --region ${env.AWS_REGION} --query 'cluster.resourcesVpcConfig.vpcId' --output text",
+            returnStdout: true
+          ).trim()
           writeFile file: 'stage-9/lbc-values.yaml', text: """clusterName: ${env.EKS_CLUSTER_NAME}
+region: ${env.AWS_REGION}
+vpcId: ${env.VPC_ID}
 serviceAccount:
   create: true
   name: aws-load-balancer-controller
