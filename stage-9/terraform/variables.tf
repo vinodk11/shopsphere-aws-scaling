@@ -168,19 +168,19 @@ variable "green_weight" {
 variable "enable_product_path_routing" {
   description = "Direct /api/products* traffic to EKS Product Service"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "enable_order_path_routing" {
   description = "Direct /api/orders* traffic to EKS Order Service"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "enable_user_path_routing" {
   description = "Direct /api/users* traffic to EKS User Service"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "tags" {

@@ -7,9 +7,9 @@ pipeline {
 
   parameters {
     choice(name: 'MIGRATION_WEIGHT', choices: ['100-0','90-10','75-25','50-50','25-75','0-100'], description: 'Blue(Stage 8)-Green(Stage 9) weights for the catch-all rule.')
-    booleanParam(name: 'ENABLE_PRODUCT_PATH', defaultValue: false, description: 'Enable /api/products* ALB rule through the infrastructure pipeline.')
-    booleanParam(name: 'ENABLE_ORDER_PATH', defaultValue: false, description: 'Enable /api/orders* ALB rule through the infrastructure pipeline.')
-    booleanParam(name: 'ENABLE_USER_PATH', defaultValue: false, description: 'Enable /api/users* ALB rule through the infrastructure pipeline.')
+    booleanParam(name: 'ENABLE_PRODUCT_PATH', defaultValue: true, description: 'Enable /api/products* ALB rule through the infrastructure pipeline.')
+    booleanParam(name: 'ENABLE_ORDER_PATH', defaultValue: true, description: 'Enable /api/orders* ALB rule through the infrastructure pipeline.')
+    booleanParam(name: 'ENABLE_USER_PATH', defaultValue: true, description: 'Enable /api/users* ALB rule through the infrastructure pipeline.')
     booleanParam(name: 'RUN_DAST', defaultValue: true, description: 'Run ZAP baseline after deployment.')
     string(name: 'DAST_URL', defaultValue: 'https://d33f8dq17c8295.cloudfront.net', description: 'Application URL used by the DAST stage.')
   }

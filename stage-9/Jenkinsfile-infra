@@ -8,9 +8,9 @@ pipeline {
   parameters {
     choice(name: 'ACTION', choices: ['apply', 'plan', 'destroy'], description: 'Terraform action to execute: apply (provision/update), plan (dry run), or destroy (teardown Stage 9)')
     booleanParam(name: 'AUTO_APPROVE', defaultValue: false, description: 'Skip the apply/destroy approval gate.')
-    booleanParam(name: 'ENABLE_PRODUCT_PATH', defaultValue: false, description: 'Enable /api/products* ALB rule.')
-    booleanParam(name: 'ENABLE_ORDER_PATH', defaultValue: false, description: 'Enable /api/orders* ALB rule.')
-    booleanParam(name: 'ENABLE_USER_PATH', defaultValue: false, description: 'Enable /api/users* ALB rule.')
+    booleanParam(name: 'ENABLE_PRODUCT_PATH', defaultValue: true, description: 'Enable /api/products* ALB rule.')
+    booleanParam(name: 'ENABLE_ORDER_PATH', defaultValue: true, description: 'Enable /api/orders* ALB rule.')
+    booleanParam(name: 'ENABLE_USER_PATH', defaultValue: true, description: 'Enable /api/users* ALB rule.')
     string(name: 'BLUE_WEIGHT', defaultValue: '100', description: 'Stage 8 target-group weight.')
     string(name: 'GREEN_WEIGHT', defaultValue: '0', description: 'Stage 9 target-group weight.')
   }
