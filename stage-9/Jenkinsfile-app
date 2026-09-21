@@ -25,7 +25,7 @@ pipeline {
     PRODUCT_REPO = 'shopsphere-stage9-product'
     ORDER_REPO = 'shopsphere-stage9-order'
     USER_REPO = 'shopsphere-stage9-user'
-    INFRA_JOB = 'shopsphere-stage9-infra'
+    INFRA_JOB = 'stage-9-infra'
     NODE_IMAGE = 'node:20-alpine'
   }
 
