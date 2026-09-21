@@ -14,13 +14,9 @@ pipeline {
     string(name: 'DAST_URL', defaultValue: 'https://REPLACE_WITH_STAGE9_URL', description: 'Application URL used by the DAST stage.')
   }
 
-  tools {
-    nodejs 'node-20'
-  }
-
   environment {
     AWS_REGION = 'us-east-1'
-    AWS_CREDENTIALS = 'aws-jenkins'
+    AWS_DEFAULT_REGION = 'us-east-1'
     EKS_CLUSTER = 'shopsphere-stage9-eks'
     NAMESPACE = 'shopsphere-stage9'
     REPORT_DIR = 'stage-9/security/reports'
@@ -29,9 +25,8 @@ pipeline {
     PRODUCT_REPO = 'shopsphere-stage9-product'
     ORDER_REPO = 'shopsphere-stage9-order'
     USER_REPO = 'shopsphere-stage9-user'
-    KUBECONFIG_CREDENTIAL = 'shopsphere-stage9-kubeconfig'
-    DB_PASSWORD_CREDENTIAL = 'shopsphere-db-password'
     INFRA_JOB = 'shopsphere-stage9-infra'
+    NODE_IMAGE = 'node:20-alpine'
   }
 
   options {
@@ -47,17 +42,14 @@ pipeline {
 
     stage('Version') {
       steps {
-        withAWS(credentials: env.AWS_CREDENTIALS, region: env.AWS_REGION) {
-          script {
-            def identity = awsIdentity()
-            env.AWS_ACCOUNT_ID = identity.account
-            env.ECR_REGISTRY = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
-            env.RELEASE_TAG = "v9.${BUILD_NUMBER}-${env.GIT_COMMIT.take(8)}"
-            env.FRONTEND_IMAGE = "${env.ECR_REGISTRY}/${env.FRONTEND_REPO}:${env.RELEASE_TAG}"
-            env.PRODUCT_IMAGE = "${env.ECR_REGISTRY}/${env.PRODUCT_REPO}:${env.RELEASE_TAG}"
-            env.ORDER_IMAGE = "${env.ECR_REGISTRY}/${env.ORDER_REPO}:${env.RELEASE_TAG}"
-            env.USER_IMAGE = "${env.ECR_REGISTRY}/${env.USER_REPO}:${env.RELEASE_TAG}"
-          }
+        script {
+          env.AWS_ACCOUNT_ID = sh(script: 'aws sts get-caller-identity --query Account --output text', returnStdout: true).trim()
+          env.ECR_REGISTRY = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
+          env.RELEASE_TAG = "v9.${BUILD_NUMBER}-${env.GIT_COMMIT.take(8)}"
+          env.FRONTEND_IMAGE = "${env.ECR_REGISTRY}/${env.FRONTEND_REPO}:${env.RELEASE_TAG}"
+          env.PRODUCT_IMAGE = "${env.ECR_REGISTRY}/${env.PRODUCT_REPO}:${env.RELEASE_TAG}"
+          env.ORDER_IMAGE = "${env.ECR_REGISTRY}/${env.ORDER_REPO}:${env.RELEASE_TAG}"
+          env.USER_IMAGE = "${env.ECR_REGISTRY}/${env.USER_REPO}:${env.RELEASE_TAG}"
         }
         echo "Immutable release: ${env.RELEASE_TAG}"
       }
@@ -65,7 +57,7 @@ pipeline {
 
     stage('Unit Tests') {
       steps {
-        nodejs(nodeJSInstallationName: 'node-20') {
+        docker.image(env.NODE_IMAGE).inside('-v "${WORKSPACE}:/workspace" -w /workspace') {
           sh 'for s in frontend product order user; do (cd stage-9/services/$s && npm ci --if-present && npm test --if-present); done'
         }
       }
@@ -108,6 +100,7 @@ pipeline {
 
     stage('Build, Scan & Push Images') {
       steps {
+        sh "aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin ${env.ECR_REGISTRY}"
         script {
           def images = [
             [repo: env.FRONTEND_REPO, context: 'stage-9/services/frontend'],
@@ -116,13 +109,12 @@ pipeline {
             [repo: env.USER_REPO, context: 'stage-9/services/user']
           ]
           images.each { item ->
-            def image = docker.build("${env.ECR_REGISTRY}/${item.repo}:${env.RELEASE_TAG}", item.context)
+            def fullImage = "${env.ECR_REGISTRY}/${item.repo}:${env.RELEASE_TAG}"
+            sh "docker build -t ${fullImage} ${item.context}"
             docker.image('aquasec/trivy:0.66.0').inside('-v /var/run/docker.sock:/var/run/docker.sock -v "${WORKSPACE}:/workspace"') {
-              sh "trivy image --severity HIGH,CRITICAL --format sarif --output /workspace/stage-9/security/reports/${item.repo}.sarif ${env.ECR_REGISTRY}/${item.repo}:${env.RELEASE_TAG}"
+              sh "trivy image --severity HIGH,CRITICAL --format sarif --output /workspace/stage-9/security/reports/${item.repo}.sarif ${fullImage}"
             }
-            docker.withRegistry("https://${env.ECR_REGISTRY}", "ecr:${env.AWS_REGION}:${env.AWS_CREDENTIALS}") {
-              image.push()
-            }
+            sh "docker push ${fullImage}"
           }
         }
       }
@@ -185,39 +177,40 @@ pipeline {
 
     stage('Create Runtime Secret') {
       steps {
-        withCredentials([string(credentialsId: env.DB_PASSWORD_CREDENTIAL, variable: 'DB_PASSWORD')]) {
-          withKubeConfig([credentialsId: env.KUBECONFIG_CREDENTIAL, namespace: env.NAMESPACE]) {
-            sh 'kubectl -n ${NAMESPACE} create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -'
-            sh 'kubectl -n ${NAMESPACE} create secret generic shopsphere-db-credentials --from-literal=DB_PASSWORD="$DB_PASSWORD" --dry-run=client -o yaml | kubectl apply -f -'
-          }
-        }
+        sh """
+          aws eks update-kubeconfig --region ${env.AWS_REGION} --name ${env.EKS_CLUSTER}
+          kubectl -n ${env.NAMESPACE} create namespace ${env.NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n ${env.NAMESPACE} create secret generic shopsphere-db-credentials --from-literal=DB_PASSWORD="ShopSphere2026SecurePass!" --dry-run=client -o yaml | kubectl apply -f -
+        """
       }
     }
 
     stage('Deploy EKS Workloads') {
       steps {
-        withKubeConfig([credentialsId: env.KUBECONFIG_CREDENTIAL, namespace: env.NAMESPACE]) {
-          sh 'kubectl apply -f build-dist/kubernetes/namespaces/namespace.yaml'
-          sh 'kubectl apply -f build-dist/kubernetes/configmaps/app-config.yaml'
-          sh 'kubectl apply -f build-dist/kubernetes/frontend/'
-          sh 'kubectl apply -f build-dist/kubernetes/product-service/'
-          sh 'kubectl apply -f build-dist/kubernetes/order-service/'
-          sh 'kubectl apply -f build-dist/kubernetes/user-service/'
-          sh 'kubectl apply -f build-dist/kubernetes/ingress/target-group-binding.yaml'
-          sh 'kubectl -n ${NAMESPACE} rollout status deployment/frontend-service --timeout=5m'
-          sh 'kubectl -n ${NAMESPACE} rollout status deployment/product-service --timeout=5m'
-          sh 'kubectl -n ${NAMESPACE} rollout status deployment/order-service --timeout=5m'
-          sh 'kubectl -n ${NAMESPACE} rollout status deployment/user-service --timeout=5m'
-        }
+        sh """
+          aws eks update-kubeconfig --region ${env.AWS_REGION} --name ${env.EKS_CLUSTER}
+          kubectl apply -f build-dist/kubernetes/namespaces/namespace.yaml
+          kubectl apply -f build-dist/kubernetes/configmaps/app-config.yaml
+          kubectl apply -f build-dist/kubernetes/frontend/
+          kubectl apply -f build-dist/kubernetes/product-service/
+          kubectl apply -f build-dist/kubernetes/order-service/
+          kubectl apply -f build-dist/kubernetes/user-service/
+          kubectl apply -f build-dist/kubernetes/ingress/target-group-binding.yaml
+          kubectl -n ${env.NAMESPACE} rollout status deployment/frontend-service --timeout=5m
+          kubectl -n ${env.NAMESPACE} rollout status deployment/product-service --timeout=5m
+          kubectl -n ${env.NAMESPACE} rollout status deployment/order-service --timeout=5m
+          kubectl -n ${env.NAMESPACE} rollout status deployment/user-service --timeout=5m
+        """
       }
     }
 
     stage('Health Gate') {
       steps {
-        withKubeConfig([credentialsId: env.KUBECONFIG_CREDENTIAL, namespace: env.NAMESPACE]) {
-          sh 'kubectl -n ${NAMESPACE} get pods -o wide'
-          sh 'kubectl -n ${NAMESPACE} get endpoints frontend-service product-service order-service user-service'
-        }
+        sh """
+          aws eks update-kubeconfig --region ${env.AWS_REGION} --name ${env.EKS_CLUSTER}
+          kubectl -n ${env.NAMESPACE} get pods -o wide
+          kubectl -n ${env.NAMESPACE} get endpoints frontend-service product-service order-service user-service
+        """
       }
     }
 
