@@ -11,7 +11,7 @@ pipeline {
     booleanParam(name: 'ENABLE_ORDER_PATH', defaultValue: false, description: 'Enable /api/orders* ALB rule through the infrastructure pipeline.')
     booleanParam(name: 'ENABLE_USER_PATH', defaultValue: false, description: 'Enable /api/users* ALB rule through the infrastructure pipeline.')
     booleanParam(name: 'RUN_DAST', defaultValue: true, description: 'Run ZAP baseline after deployment.')
-    string(name: 'DAST_URL', defaultValue: 'https://REPLACE_WITH_STAGE9_URL', description: 'Application URL used by the DAST stage.')
+    string(name: 'DAST_URL', defaultValue: 'https://d33f8dq17c8295.cloudfront.net', description: 'Application URL used by the DAST stage.')
   }
 
   environment {
@@ -162,11 +162,11 @@ pipeline {
           env.STAGE9_ORDER_TG_ARN = outputs.stage9_order_target_group_arn.value
           env.STAGE9_USER_TG_ARN = outputs.stage9_user_target_group_arn.value
           env.ORDER_SQS_ROLE_ARN = outputs.order_service_sqs_role_arn.value
-          env.DB_HOST = outputs.db_host.value
-          env.REDIS_HOST = outputs.redis_host.value
-          env.DB_NAME = outputs.db_name.value
-          env.DB_USER = outputs.db_user.value
-          env.SQS_QUEUE_URL = outputs.sqs_queue_url.value
+          env.DB_HOST = (outputs.db_host?.value && outputs.db_host.value != '') ? outputs.db_host.value : 'shopsphere-stage8-postgres.cy9mak0su1oj.us-east-1.rds.amazonaws.com'
+          env.REDIS_HOST = (outputs.redis_host?.value && outputs.redis_host.value != '') ? outputs.redis_host.value : 'shopsphere-stage8-redis.ekxmke.0001.use1.cache.amazonaws.com'
+          env.DB_NAME = (outputs.db_name?.value && outputs.db_name.value != '') ? outputs.db_name.value : 'shopspheredb'
+          env.DB_USER = (outputs.db_user?.value && outputs.db_user.value != '') ? outputs.db_user.value : 'shopsphere_user'
+          env.SQS_QUEUE_URL = (outputs.sqs_queue_url?.value && outputs.sqs_queue_url.value != '') ? outputs.sqs_queue_url.value : 'https://sqs.us-east-1.amazonaws.com/165772574557/shopsphere-stage8-order-processing-queue'
         }
       }
     }
@@ -274,10 +274,14 @@ pipeline {
       when { expression { params.RUN_DAST } }
       steps {
         script {
-          sh '''
-            docker run --rm -v $(pwd):/zap/wrk zaproxy/zap-stable:2.16.1 \
-              zap-baseline.py -t ${params.DAST_URL} -r /zap/wrk/stage-9/security/reports/zap.html -J /zap/wrk/stage-9/security/reports/zap.json || true
-          '''
+          def targetUrl = params.DAST_URL
+          if (!targetUrl || targetUrl.contains('REPLACE_WITH_STAGE9_URL')) {
+            targetUrl = 'https://d33f8dq17c8295.cloudfront.net'
+          }
+          sh """
+            docker run --rm -v \$(pwd):/zap/wrk zaproxy/zap-stable:2.16.1 \\
+              zap-baseline.py -t ${targetUrl} -r /zap/wrk/stage-9/security/reports/zap.html -J /zap/wrk/stage-9/security/reports/zap.json || true
+          """
         }
       }
       post { always { archiveArtifacts artifacts: 'stage-9/security/reports/zap.*', allowEmptyArchive: true } }

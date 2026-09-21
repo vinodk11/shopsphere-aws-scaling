@@ -90,13 +90,13 @@ variable "custom_header_value" {
 variable "db_host" {
   description = "Existing Stage 8 RDS endpoint used by Stage 9. Set explicitly; do not discover by guessing."
   type        = string
-  default     = ""
+  default     = "shopsphere-stage8-postgres.cy9mak0su1oj.us-east-1.rds.amazonaws.com"
 }
 
 variable "redis_host" {
   description = "Existing Stage 8 ElastiCache Redis endpoint used by Stage 9."
   type        = string
-  default     = ""
+  default     = "shopsphere-stage8-redis.ekxmke.0001.use1.cache.amazonaws.com"
 }
 
 variable "db_name" {
