@@ -1,0 +1,175 @@
+// ==============================================================================
+// ShopSphere Stage 10 - Infrastructure Pipeline (GitOps & Argo CD Setup)
+// Provisions EKS, Managed Nodes, ALB Rules, ECR, and Boots Argo CD into 'argocd'
+// ==============================================================================
+
+pipeline {
+  agent any
+
+  parameters {
+    choice(name: 'ACTION', choices: ['apply', 'plan', 'destroy'], description: 'Terraform action to execute: apply (provision/update), plan (dry run), or destroy (teardown Stage 10)')
+    booleanParam(name: 'AUTO_APPROVE', defaultValue: false, description: 'Skip the apply/destroy approval gate.')
+    booleanParam(name: 'ENABLE_PRODUCT_PATH', defaultValue: true, description: 'Enable /api/products* ALB rule.')
+    booleanParam(name: 'ENABLE_ORDER_PATH', defaultValue: true, description: 'Enable /api/orders* ALB rule.')
+    booleanParam(name: 'ENABLE_USER_PATH', defaultValue: true, description: 'Enable /api/users* ALB rule.')
+    string(name: 'BLUE_WEIGHT', defaultValue: '0', description: 'Stage 8 target-group weight.')
+    string(name: 'GREEN_WEIGHT', defaultValue: '100', description: 'Stage 10 target-group weight.')
+  }
+
+  environment {
+    TF_DIR = 'stage-10/terraform'
+    AWS_REGION = 'us-east-1'
+    AWS_DEFAULT_REGION = 'us-east-1'
+  }
+
+  options {
+    timeout(time: 90, unit: 'MINUTES')
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+    ansiColor('xterm')
+  }
+
+  stages {
+    stage('Checkout') {
+      steps { checkout scm }
+    }
+
+    stage('Terraform Format') {
+      steps {
+        dir(env.TF_DIR) {
+          sh 'terraform fmt -check -recursive'
+        }
+      }
+    }
+
+    stage('Terraform Init') {
+      steps {
+        dir(env.TF_DIR) {
+          sh 'terraform init -input=false'
+        }
+      }
+    }
+
+    stage('Terraform Validate') {
+      steps {
+        dir(env.TF_DIR) { sh 'terraform validate' }
+      }
+    }
+
+    stage('Checkov IaC Scan') {
+      steps {
+        script {
+          sh '''
+            mkdir -p stage-10/security/reports
+            docker run --rm \
+              -v $(pwd):/workspace \
+              bridgecrew/checkov:3.2.451 \
+              -d /workspace/stage-10/terraform \
+              --config-file /workspace/stage-10/security/iac/.checkov.yaml \
+              --output sarif --output-file-path /workspace/stage-10/security/reports \
+              --soft-fail || true
+          '''
+        }
+      }
+      post {
+        always { archiveArtifacts artifacts: 'stage-10/security/reports/*', allowEmptyArchive: true }
+      }
+    }
+
+    stage('Terraform Plan') {
+      steps {
+        dir(env.TF_DIR) {
+          script {
+            if (params.ACTION == 'destroy') {
+              echo '⚠️ Generating DESTROY execution plan for Stage 10 infrastructure...'
+              sh 'terraform plan -destroy -input=false -var=enable_product_path_routing=${ENABLE_PRODUCT_PATH} -var=enable_order_path_routing=${ENABLE_ORDER_PATH} -var=enable_user_path_routing=${ENABLE_USER_PATH} -var=blue_weight=${BLUE_WEIGHT} -var=green_weight=${GREEN_WEIGHT} -out=stage10.tfplan'
+            } else {
+              sh 'terraform plan -input=false -var=enable_product_path_routing=${ENABLE_PRODUCT_PATH} -var=enable_order_path_routing=${ENABLE_ORDER_PATH} -var=enable_user_path_routing=${ENABLE_USER_PATH} -var=blue_weight=${BLUE_WEIGHT} -var=green_weight=${GREEN_WEIGHT} -out=stage10.tfplan'
+            }
+            sh 'terraform show -no-color stage10.tfplan > stage10-plan.txt'
+          }
+        }
+      }
+      post {
+        always { archiveArtifacts artifacts: 'stage-10/terraform/stage10.tfplan,stage-10/terraform/stage10-plan.txt', allowEmptyArchive: true }
+      }
+    }
+
+    stage('Approval') {
+      when { expression { (params.ACTION == 'apply' || params.ACTION == 'destroy') && !params.AUTO_APPROVE } }
+      steps {
+        input message: "Review the Stage 10 Terraform ${params.ACTION} plan. Proceed?", ok: "${params.ACTION.capitalize()} Stage 10"
+      }
+    }
+
+    stage('Terraform Apply / Destroy') {
+      when { expression { params.ACTION == 'apply' || params.ACTION == 'destroy' } }
+      steps {
+        dir(env.TF_DIR) {
+          sh 'terraform apply -input=false stage10.tfplan'
+        }
+      }
+    }
+
+    stage('Export Infrastructure Outputs') {
+      when { expression { params.ACTION == 'apply' } }
+      steps {
+        dir(env.TF_DIR) {
+          sh 'terraform output -json > stage10-outputs.json'
+        }
+      }
+      post { always { archiveArtifacts artifacts: 'stage-10/terraform/stage10-outputs.json', allowEmptyArchive: true } }
+    }
+
+    stage('Install AWS Load Balancer Controller') {
+      when { expression { params.ACTION == 'apply' } }
+      steps {
+        script {
+          def outputs = readJSON file: 'stage-10/terraform/stage10-outputs.json'
+          env.LBC_ROLE_ARN = outputs.aws_load_balancer_controller_role_arn.value
+          env.EKS_CLUSTER_NAME = outputs.eks_cluster_name.value
+          env.VPC_ID = outputs.vpc_id?.value ?: sh(
+            script: "aws eks describe-cluster --name ${env.EKS_CLUSTER_NAME} --region ${env.AWS_REGION} --query 'cluster.resourcesVpcConfig.vpcId' --output text",
+            returnStdout: true
+          ).trim()
+          writeFile file: 'stage-10/lbc-values.yaml', text: """clusterName: ${env.EKS_CLUSTER_NAME}
+region: ${env.AWS_REGION}
+vpcId: ${env.VPC_ID}
+serviceAccount:
+  create: true
+  name: aws-load-balancer-controller
+  annotations:
+    eks.amazonaws.com/role-arn: ${env.LBC_ROLE_ARN}
+"""
+        }
+        sh """
+          aws eks update-kubeconfig --region ${env.AWS_REGION} --name ${env.EKS_CLUSTER_NAME}
+          helm repo add eks https://aws.github.io/eks-charts && helm repo update
+          helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+            --namespace kube-system --create-namespace \
+            -f stage-10/lbc-values.yaml \
+            --wait
+        """
+      }
+    }
+
+    stage('Verify Argo CD Status') {
+      when { expression { params.ACTION == 'apply' } }
+      steps {
+        sh """
+          aws eks update-kubeconfig --region ${env.AWS_REGION} --name \$(jq -r .eks_cluster_name.value stage-10/terraform/stage10-outputs.json)
+          echo '=== Argo CD Pods ==='
+          kubectl get pods -n argocd -o wide
+          echo '=== Argo CD Applications ==='
+          kubectl get applications -n argocd || true
+          echo '=== Argo CD Initial Admin Password Retrieval Command ==='
+          echo 'kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath=\"{.data.password}\" | base64 -d && echo'
+        """
+      }
+    }
+  }
+
+  post {
+    success { echo 'Stage 10 infrastructure pipeline completed successfully. Argo CD is active on EKS.' }
+    failure { echo 'Stage 10 infrastructure pipeline failed. Review logs and plan output.' }
+  }
+}

@@ -1,0 +1,7 @@
+rules:
+  - id: stage9-no-eval
+    patterns:
+      - pattern: eval(...)
+    message: "Do not use eval() in Stage 9 microservices due to code injection risks."
+    languages: [javascript]
+    severity: ERROR

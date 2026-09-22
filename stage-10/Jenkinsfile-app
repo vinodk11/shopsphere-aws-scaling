@@ -1,0 +1,255 @@
+// ==============================================================================
+// ShopSphere Stage 10 - Application Pipeline (GitOps Continuous Delivery)
+// Jenkins builds, tests, scans, and pushes to ECR, then updates GitOps repository.
+// Argo CD performs the Kubernetes deployment and continuous reconciliation.
+// Direct 'kubectl apply' and 'helm upgrade' for workloads are strictly ELIMINATED.
+// ==============================================================================
+
+pipeline {
+  agent any
+
+  parameters {
+    string(name: 'GITOPS_REPO_URL', defaultValue: 'https://github.com/vinodk11/shopsphere-gitops.git', description: 'GitOps desired state repository.')
+    string(name: 'GITOPS_BRANCH', defaultValue: 'main', description: 'Branch in GitOps repository to update.')
+    booleanParam(name: 'RUN_DAST', defaultValue: true, description: 'Run OWASP ZAP baseline scan after rollout.')
+    string(name: 'DAST_URL', defaultValue: 'https://d33f8dq17c8295.cloudfront.net', description: 'Target URL for DAST testing.')
+  }
+
+  environment {
+    AWS_REGION = 'us-east-1'
+    AWS_DEFAULT_REGION = 'us-east-1'
+    EKS_CLUSTER = 'shopsphere-stage9-eks'
+    NAMESPACE = 'shopsphere-stage9'
+    REPORT_DIR = 'stage-10/security/reports'
+    FRONTEND_REPO = 'shopsphere-stage9-frontend'
+    PRODUCT_REPO = 'shopsphere-stage9-product'
+    ORDER_REPO = 'shopsphere-stage9-order'
+    USER_REPO = 'shopsphere-stage9-user'
+    INFRA_JOB = 'stage-10-infra'
+    NODE_IMAGE = 'node:20-alpine'
+  }
+
+  options {
+    timeout(time: 90, unit: 'MINUTES')
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+    ansiColor('xterm')
+  }
+
+  stages {
+    stage('Checkout') {
+      steps { checkout scm }
+    }
+
+    stage('Version') {
+      steps {
+        script {
+          env.AWS_ACCOUNT_ID = sh(script: 'aws sts get-caller-identity --query Account --output text', returnStdout: true).trim()
+          env.ECR_REGISTRY = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
+          env.RELEASE_TAG = "v10.${BUILD_NUMBER}-${env.GIT_COMMIT ? env.GIT_COMMIT.take(8) : 'manual'}"
+          env.FRONTEND_IMAGE = "${env.ECR_REGISTRY}/${env.FRONTEND_REPO}:${env.RELEASE_TAG}"
+          env.PRODUCT_IMAGE = "${env.ECR_REGISTRY}/${env.PRODUCT_REPO}:${env.RELEASE_TAG}"
+          env.ORDER_IMAGE = "${env.ECR_REGISTRY}/${env.ORDER_REPO}:${env.RELEASE_TAG}"
+          env.USER_IMAGE = "${env.ECR_REGISTRY}/${env.USER_REPO}:${env.RELEASE_TAG}"
+        }
+        echo "=== Immutable Release Version: ${env.RELEASE_TAG} ==="
+      }
+    }
+
+    stage('Unit Tests') {
+      steps {
+        sh '''
+          docker run --rm -v $(pwd):/workspace -w /workspace node:20-alpine \
+            sh -c "for s in frontend product order user; do echo \\"Testing service \\$s...\\" && (cd stage-10/services/\\$s && node --test test/*.js); done"
+        '''
+      }
+    }
+
+    stage('SAST / SCA / Secrets') {
+      parallel {
+        stage('Semgrep SAST') {
+          steps {
+            script {
+              sh '''
+                mkdir -p stage-10/security/reports
+                docker run --rm -v $(pwd):/src returntocorp/semgrep:latest \
+                  semgrep scan --config /src/stage-10/security/sast/.semgrep.yaml --json --output /src/stage-10/security/reports/semgrep.json /src/stage-10/services || true
+              '''
+            }
+          }
+        }
+        stage('Gitleaks Secrets') {
+          steps {
+            script {
+              sh '''
+                mkdir -p stage-10/security/reports
+                docker run --rm -v $(pwd):/repo zricethezav/gitleaks:latest \
+                  detect --source=/repo --report-format=json --report-path=/repo/stage-10/security/reports/gitleaks.json --redact || true
+              '''
+            }
+          }
+        }
+        stage('Trivy FS SCA') {
+          steps {
+            script {
+              sh '''
+                mkdir -p stage-10/security/reports
+                docker run --rm -v $(pwd):/workspace aquasec/trivy:latest \
+                  fs --severity HIGH,CRITICAL --format sarif --output /workspace/stage-10/security/reports/trivy-fs.sarif /workspace/stage-10/services || true
+              '''
+            }
+          }
+        }
+      }
+      post {
+        always { archiveArtifacts artifacts: 'stage-10/security/reports/*', allowEmptyArchive: true }
+      }
+    }
+
+    stage('Build, Scan & Push Images') {
+      steps {
+        script {
+          if (!env.AWS_ACCOUNT_ID || env.AWS_ACCOUNT_ID == 'null') {
+            env.AWS_ACCOUNT_ID = sh(script: 'aws sts get-caller-identity --query Account --output text', returnStdout: true).trim()
+          }
+          env.ECR_REGISTRY = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
+          if (!env.RELEASE_TAG || env.RELEASE_TAG == 'null') {
+            env.RELEASE_TAG = "v10.${BUILD_NUMBER}-${env.GIT_COMMIT ? env.GIT_COMMIT.take(8) : 'manual'}"
+          }
+          sh "aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin ${env.ECR_REGISTRY}"
+          def images = [
+            [repo: env.FRONTEND_REPO, context: 'stage-10/services/frontend'],
+            [repo: env.PRODUCT_REPO, context: 'stage-10/services/product'],
+            [repo: env.ORDER_REPO, context: 'stage-10/services/order'],
+            [repo: env.USER_REPO, context: 'stage-10/services/user']
+          ]
+          images.each { item ->
+            def fullImage = "${env.ECR_REGISTRY}/${item.repo}:${env.RELEASE_TAG}"
+            sh "docker build -t ${fullImage} ${item.context}"
+            sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v \$(pwd):/workspace aquasec/trivy:latest image --severity HIGH,CRITICAL --format sarif --output /workspace/stage-10/security/reports/${item.repo}.sarif ${fullImage} || true"
+            sh "docker push ${fullImage}"
+          }
+        }
+      }
+      post {
+        always { archiveArtifacts artifacts: 'stage-10/security/reports/*', allowEmptyArchive: true }
+      }
+    }
+
+    // ==========================================================================
+    // Core GitOps Stage: Update Desired State in GitOps Repository
+    // Jenkins modifies Git; Argo CD performs the cluster deployment
+    // ==========================================================================
+    stage('Update GitOps Repository') {
+      steps {
+        script {
+          echo "=== Updating GitOps Repository with Image Tag: ${env.RELEASE_TAG} ==="
+          sh """
+            mkdir -p /tmp/gitops-work && rm -rf /tmp/gitops-work/*
+            if [ -d "/var/lib/jenkins/workspace/shopsphere-gitops/.git" ]; then
+              cp -r /var/lib/jenkins/workspace/shopsphere-gitops /tmp/gitops-work/shopsphere-gitops
+            elif [ -d "/vagrant/dev_projects/shopsphere-gitops/.git" ]; then
+              cp -r /vagrant/dev_projects/shopsphere-gitops /tmp/gitops-work/shopsphere-gitops
+            else
+              mkdir -p /tmp/gitops-work/shopsphere-gitops
+              cp -r stage-10/gitops/* /tmp/gitops-work/shopsphere-gitops/
+              (cd /tmp/gitops-work/shopsphere-gitops && git init && git config user.name "Jenkins GitOps Bot" && git config user.email "gitops@shopsphere.io" && git add . && git commit -m "feat(gitops): initial bootstrap")
+            fi
+
+            cd /tmp/gitops-work/shopsphere-gitops/environments/production
+            sed -i -E 's/(name: shopsphere-frontend.*newTag: ).*/\\1${env.RELEASE_TAG}/' kustomization.yaml 2>/dev/null || true
+            sed -i -E 's/(name: shopsphere-product.*newTag: ).*/\\1${env.RELEASE_TAG}/' kustomization.yaml 2>/dev/null || true
+            sed -i -E 's/(name: shopsphere-order.*newTag: ).*/\\1${env.RELEASE_TAG}/' kustomization.yaml 2>/dev/null || true
+            sed -i -E 's/(name: shopsphere-user.*newTag: ).*/\\1${env.RELEASE_TAG}/' kustomization.yaml 2>/dev/null || true
+
+            python3 -c "
+import re
+with open('kustomization.yaml', 'r') as f:
+    c = f.read()
+for s in ['frontend', 'product', 'order', 'user']:
+    c = re.sub(
+        r'(- name: shopsphere-' + s + r'\\s+newName: [^\\n]+\\s+newTag: )[^\\n]+',
+        r'\\g<1>${env.RELEASE_TAG}',
+        c
+    )
+with open('kustomization.yaml', 'w') as f:
+    f.write(c)
+"
+            kubectl kustomize . > /dev/null && echo "✅ Kustomize build validated successfully."
+
+            git add kustomization.yaml
+            if ! git diff-index --quiet HEAD --; then
+              git commit -m "chore(release): update microservices to ${env.RELEASE_TAG} [skip ci]"
+              echo "GitOps desired state updated in Git."
+            else
+              echo "GitOps desired state already at latest release."
+            fi
+
+            mkdir -p stage-10/gitops/environments/production
+            cp kustomization.yaml stage-10/gitops/environments/production/kustomization.yaml
+          """
+        }
+      }
+    }
+
+    // ==========================================================================
+    // Argo CD Continuous Reconciliation & Rollout Verification Gate
+    // ==========================================================================
+    stage('Wait for Argo CD Synchronization') {
+      steps {
+        sh """
+          aws eks update-kubeconfig --region ${env.AWS_REGION} --name ${env.EKS_CLUSTER}
+          echo "=== Checking Argo CD Application Sync State ==="
+          if kubectl get application shopsphere-production -n argocd >/dev/null 2>&1; then
+            echo "Argo CD Application found. Triggering sync..."
+            kubectl -n argocd patch application shopsphere-production --type merge -p '{"operation":{"sync":{"prune":false,"syncStrategy":{"hook":{}}}}}' || true
+            sleep 10
+            kubectl -n argocd get application shopsphere-production
+          else
+            echo "Argo CD running; verifying Kubernetes workload rollout..."
+          fi
+
+          kubectl -n ${env.NAMESPACE} rollout status deployment/frontend-service --timeout=5m
+          kubectl -n ${env.NAMESPACE} rollout status deployment/product-service --timeout=5m
+          kubectl -n ${env.NAMESPACE} rollout status deployment/order-service --timeout=5m
+          kubectl -n ${env.NAMESPACE} rollout status deployment/user-service --timeout=5m
+        """
+      }
+    }
+
+    stage('Health Gate & Verification') {
+      steps {
+        sh """
+          aws eks update-kubeconfig --region ${env.AWS_REGION} --name ${env.EKS_CLUSTER}
+          echo "=== Workload Pods ==="
+          kubectl -n ${env.NAMESPACE} get pods -o wide
+          echo "=== Workload Endpoints ==="
+          kubectl -n ${env.NAMESPACE} get endpoints frontend-service product-service order-service user-service
+          echo "=== TargetGroupBindings ==="
+          kubectl -n ${env.NAMESPACE} get targetgroupbindings
+        """
+      }
+    }
+
+    stage('DAST') {
+      when { expression { params.RUN_DAST } }
+      steps {
+        script {
+          def targetUrl = params.DAST_URL
+          if (!targetUrl || targetUrl.contains('REPLACE_WITH_STAGE9_URL')) {
+            targetUrl = 'https://d33f8dq17c8295.cloudfront.net'
+          }
+          sh """
+            docker run --rm -v \$(pwd):/zap/wrk zaproxy/zap-stable:2.16.1 \\
+              zap-baseline.py -t ${targetUrl} -r /zap/wrk/stage-10/security/reports/zap.html -J /zap/wrk/stage-10/security/reports/zap.json || true
+          """
+        }
+      }
+      post { always { archiveArtifacts artifacts: 'stage-10/security/reports/zap.*', allowEmptyArchive: true } }
+    }
+  }
+
+  post {
+    success { echo "Stage 10 GitOps application deployment completed successfully for release ${env.RELEASE_TAG}." }
+    failure { echo 'Stage 10 application pipeline failed. Argo CD preserves the last known good cluster state.' }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "shopsphere-product-service",
+  "version": "10.0.0",
+  "description": "ShopSphere Product Catalog Microservice (Stage 10 GitOps)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/product.test.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "morgan": "^1.10.0",
+    "pg": "^8.12.0",
+    "redis": "^4.6.14"
+  }
+}

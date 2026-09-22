@@ -1,0 +1,9 @@
+output "stage9_frontend_target_group_arn" { value = aws_lb_target_group.stage9_monolith.arn }
+output "stage9_monolith_target_group_arn" { value = aws_lb_target_group.stage9_monolith.arn }
+output "stage9_product_target_group_arn" { value = aws_lb_target_group.stage9_product.arn }
+output "stage9_order_target_group_arn" { value = aws_lb_target_group.stage9_order.arn }
+output "stage9_user_target_group_arn" { value = aws_lb_target_group.stage9_user.arn }
+output "blue_green_listener_rule_arn" { value = length(aws_lb_listener_rule.blue_green_weighted) > 0 ? aws_lb_listener_rule.blue_green_weighted[0].arn : "" }
+output "product_path_listener_rule_arn" { value = length(aws_lb_listener_rule.product_service) > 0 ? aws_lb_listener_rule.product_service[0].arn : "" }
+output "order_path_listener_rule_arn" { value = length(aws_lb_listener_rule.order_service) > 0 ? aws_lb_listener_rule.order_service[0].arn : "" }
+output "user_path_listener_rule_arn" { value = length(aws_lb_listener_rule.user_service) > 0 ? aws_lb_listener_rule.user_service[0].arn : "" }

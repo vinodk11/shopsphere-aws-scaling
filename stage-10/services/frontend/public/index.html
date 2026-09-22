@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShopSphere - Stage 10: GitOps & Argo CD</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    .badge-sso { background: #8b5cf6; color: #fff; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 700; margin-left: 0.5rem; }
+    .sso-btn { display: flex; align-items: center; justify-content: center; gap: 0.5rem; width: 100%; padding: 0.75rem; border-radius: 8px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); background: #1e293b; color: #fff; margin-bottom: 0.5rem; transition: all 0.2s ease; }
+    .sso-btn:hover { background: #334155; transform: translateY(-1px); }
+    .sso-btn.aws { border-color: #f59e0b; color: #fbbf24; }
+    .sso-btn.google { border-color: #3b82f6; color: #60a5fa; }
+    .sso-btn.github { border-color: #94a3b8; color: #f1f5f9; }
+    .auth-tabs { display: flex; border-bottom: 1px solid var(--border-color); margin-bottom: 1.5rem; }
+    .auth-tab-btn { flex: 1; padding: 0.85rem; background: none; border: none; color: var(--text-muted); font-weight: 700; font-size: 1rem; cursor: pointer; text-align: center; transition: all 0.2s; }
+    .auth-tab-btn.active { color: var(--accent-green); border-bottom: 3px solid var(--accent-green); background: rgba(16, 185, 129, 0.05); }
+    .auth-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 2rem; max-width: 480px; margin: 0 auto; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }
+    .auth-badge { display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.75rem; border-radius: 6px; background: rgba(16, 185, 129, 0.15); color: #34d399; font-size: 0.85rem; font-weight: 600; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .welcome-banner { background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(99, 102, 241, 0.15) 100%); border: 1px solid var(--accent-green); border-radius: 12px; padding: 1.25rem 1.5rem; margin: 1.5rem 0 2rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
+    .locked-catalog-overlay { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); border: 1px dashed var(--border-color); border-radius: 16px; padding: 3rem 1.5rem; text-align: center; margin: 2rem 0; }
+  </style>
+</head>
+<body>
+  <!-- Stage Indicator Banner -->
+  <div class="stage-banner" style="background: linear-gradient(90deg, #1e1b4b 0%, #312e81 25%, #064e3b 60%, #047857 100%);">
+    <div class="container banner-content">
+      <span class="badge" style="background: #10b981;">AWS Stage 10: GitOps &amp; Argo CD</span>
+      <span class="stage-desc">Git-Driven Continuous Delivery &bull; Argo CD Automated Reconciliation &bull; 4 Microservices &bull; 16 Enterprise Products</span>
+      <div id="systemHealthBadge" class="health-badge"><span class="pulse"></span> Probing Argo CD Sync...</div>
+    </div>
+  </div>
+
+  <!-- Header / Navbar -->
+  <header class="navbar">
+    <div class="container nav-container">
+      <div class="brand">
+        <div class="logo-icon">🪐</div>
+        <div>
+          <h1>ShopSphere</h1>
+          <span class="tagline">AWS Architecture Evolution &bull; Stage 10 (GitOps &amp; Argo CD)</span>
+        </div>
+      </div>
+      <div class="nav-actions">
+        <div id="userProfileArea">
+          <button class="btn btn-secondary" onclick="scrollToAuth()">
+            <span>👤 Sign In / Sign Up</span>
+          </button>
+        </div>
+        <button id="systemInfoBtn" class="btn btn-secondary">Architecture Visualizer</button>
+        <button id="cartBtn" class="btn btn-primary" style="display: none;">
+          <span>🛒 Cart</span>
+          <span id="cartCount" class="cart-count">0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero & Landing Section -->
+  <section class="hero">
+    <div class="container">
+      <h2>Autonomous Kubernetes GitOps with Argo CD</h2>
+      <p>Continuous reconciliation of Kubernetes desired state stored in Git. All workloads, ConfigMaps, and scaling policies are synchronized automatically from the GitOps repository.</p>
+
+      <!-- Stage 10 Topology Pipeline Visualizer -->
+      <div class="event-pipeline-card">
+        <div class="event-pipeline-header">
+          <div class="event-pipeline-title">
+            <span>🐙 GitOps Delivery Pipeline: Git &rarr; Jenkins CI &rarr; ECR &rarr; Argo CD &rarr; EKS</span>
+          </div>
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-secondary btn-sm" onclick="probeAllServices()">
+              <span>🔄 Refresh Status</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="pipeline-flow">
+          <!-- Step 1: GitOps Repo -->
+          <div class="flow-step security-active">
+            <div class="flow-step-header">
+              <span>📂</span>
+              <span>1. GitOps Repo</span>
+            </div>
+            <div class="flow-step-desc">Desired K8s State</div>
+            <div class="flow-metric">Kustomize: <span style="color: var(--accent-green);">production</span></div>
+          </div>
+
+          <!-- Step 2: Argo CD Controller -->
+          <div class="flow-step security-active">
+            <div class="flow-step-header">
+              <span>🐙</span>
+              <span>2. Argo CD</span>
+            </div>
+            <div class="flow-step-desc">Reconciliation Engine</div>
+            <div class="flow-metric">Sync: <span id="argoSyncStatus" style="color: var(--accent-green);">Automated</span></div>
+          </div>
+
+          <!-- Step 3: EKS Microservices -->
+          <div class="flow-step security-active">
+            <div class="flow-step-header">
+              <span>☸️</span>
+              <span>3. EKS Cluster</span>
+            </div>
+            <div class="flow-step-desc">4 Decoupled Pods</div>
+            <div class="flow-metric">Replicas: <span id="podReplicaStatus" style="color: var(--accent-green);">Healthy (8/8)</span></div>
+          </div>
+
+          <!-- Step 4: Data & Cache Tier -->
+          <div class="flow-step waf-active">
+            <div class="flow-step-header">
+              <span>💾</span>
+              <span>4. Data Tier</span>
+            </div>
+            <div class="flow-step-desc">RDS + Redis Cache</div>
+            <div class="flow-metric">Products: <span style="color: var(--accent-purple);">16 Active</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Content Area -->
+  <main class="container">
+
+    <!-- LANDING PAGE AUTH GATEWAY (Displayed when unauthenticated) -->
+    <section id="landingAuthSection" style="margin: 2rem 0;">
+      <div class="auth-card">
+        <div class="auth-tabs">
+          <button id="btnTabSignin" class="auth-tab-btn active" onclick="switchLandingTab('signin')">Sign In</button>
+          <button id="btnTabSignup" class="auth-tab-btn" onclick="switchLandingTab('signup')">Sign Up</button>
+          <button id="btnTabSso" class="auth-tab-btn" onclick="switchLandingTab('sso')">Enterprise SSO</button>
+        </div>
+
+        <!-- TAB 1: SIGN IN -->
+        <div id="landingTabSignin">
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.2rem; text-align: center;">
+            Sign in to access your ShopSphere cloud cart and browse all 16 enterprise products.
+          </p>
+          <form onsubmit="handleLandingSignin(event)">
+            <div style="margin-bottom: 1rem;">
+              <label style="display: block; font-size: 0.85rem; margin-bottom: 0.4rem; color: var(--text-muted);">Email or Username</label>
+              <input id="landingLoginEmail" type="text" placeholder="alex@shopsphere.io" value="alex@shopsphere.io" required style="width: 100%; padding: 0.75rem; border-radius: 8px; background: #0f172a; border: 1px solid var(--border-color); color: #fff;">
+            </div>
+            <div style="margin-bottom: 1.5rem;">
+              <label style="display: block; font-size: 0.85rem; margin-bottom: 0.4rem; color: var(--text-muted);">Password</label>
+              <input id="landingLoginPassword" type="password" placeholder="••••••••" value="ShopSphere2026!" required style="width: 100%; padding: 0.75rem; border-radius: 8px; background: #0f172a; border: 1px solid var(--border-color); color: #fff;">
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%; padding: 0.85rem; font-weight: 700; font-size: 1rem; margin-bottom: 0.75rem;">
+              Sign In to View Products &rarr;
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="quickDemoLogin()" style="width: 100%; padding: 0.65rem; font-size: 0.9rem;">
+              ⚡ Instant 1-Click Demo Sign In (Alex Developer)
+            </button>
+          </form>
+        </div>
+
+        <!-- TAB 2: SIGN UP -->
+        <div id="landingTabSignup" style="display: none;">
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.2rem; text-align: center;">
+            Create a new customer account registered directly in the Stage 10 User Service.
+          </p>
+          <form onsubmit="handleLandingSignup(event)">
+            <div style="margin-bottom: 0.8rem;">
+              <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; color: var(--text-muted);">Full Name</label>
+              <input id="landingRegName" type="text" placeholder="Sarah Cloud Architect" required style="width: 100%; padding: 0.7rem; border-radius: 8px; background: #0f172a; border: 1px solid var(--border-color); color: #fff;">
+            </div>
+            <div style="margin-bottom: 0.8rem;">
+              <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; color: var(--text-muted);">Email Address</label>
+              <input id="landingRegEmail" type="email" placeholder="sarah@example.com" required style="width: 100%; padding: 0.7rem; border-radius: 8px; background: #0f172a; border: 1px solid var(--border-color); color: #fff;">
+            </div>
+            <div style="margin-bottom: 1.2rem;">
+              <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; color: var(--text-muted);">Password</label>
+              <input id="landingRegPassword" type="password" placeholder="Create a secure password" required style="width: 100%; padding: 0.7rem; border-radius: 8px; background: #0f172a; border: 1px solid var(--border-color); color: #fff;">
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%; padding: 0.85rem; font-weight: 700; font-size: 1rem;">
+              Create Account &amp; Unlock Products &rarr;
+            </button>
+          </form>
+        </div>
+
+        <!-- TAB 3: ENTERPRISE SSO -->
+        <div id="landingTabSso" style="display: none;">
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.2rem; text-align: center;">
+            Authenticate seamlessly via your corporate cloud identity provider.
+          </p>
+          <button class="sso-btn aws" onclick="doSsoLogin('aws-iam', 'alex.developer@aws-iam.internal', 'Alex Developer (AWS SSO)')">
+            <span>⚡ Sign In with AWS IAM Identity Center</span>
+          </button>
+          <button class="sso-btn google" onclick="doSsoLogin('google', 'alex.cloud@google.com', 'Alex Developer (Google Workspace)')">
+            <span>🌐 Sign In with Google Enterprise</span>
+          </button>
+          <button class="sso-btn github" onclick="doSsoLogin('github', 'alex-dev@github.com', 'Alex Developer (GitHub SSO)')">
+            <span>🐙 Sign In with GitHub Enterprise</span>
+          </button>
+        </div>
+
+        <div id="landingAuthMsg" style="margin-top: 1rem; font-size: 0.9rem; text-align: center;"></div>
+      </div>
+
+      <!-- Teaser Banner -->
+      <div class="locked-catalog-overlay">
+        <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🔒</div>
+        <h3 style="margin-bottom: 0.5rem;">Full Product Catalog is Protected</h3>
+        <p style="color: var(--text-muted); max-width: 600px; margin: 0 auto;">
+          Please sign in or create an account above to unlock all 16 enterprise cloud products, view live inventory levels, and place orders via autonomous EKS microservices.
+        </p>
+      </div>
+    </section>
+
+    <!-- AUTHENTICATED WELCOME & CATALOG SECTION (Displayed after sign in / sign up) -->
+    <section id="authenticatedCatalogSection" style="display: none;">
+      <!-- Welcome Banner -->
+      <div class="welcome-banner">
+        <div>
+          <h3 style="margin-bottom: 0.2rem; display: flex; align-items: center; gap: 0.5rem;">
+            <span>👋 Welcome to ShopSphere,</span>
+            <span id="welcomeUserName" style="color: var(--accent-green);">User</span>!
+          </h3>
+          <p id="welcomeUserDetail" style="color: var(--text-muted); font-size: 0.85rem;">
+            Customer Account &bull; Authenticated &bull; Ready to Order
+          </p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <button class="btn btn-primary" onclick="openCartModal()">
+            <span>🛒 View Cart (<span id="bannerCartCount">0</span>)</span>
+          </button>
+          <button class="btn btn-secondary" onclick="doLogout()">
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Catalog Header -->
+      <div class="catalog-header" style="display: flex; justify-content: space-between; align-items: center; margin: 1.5rem 0 1rem; flex-wrap: wrap; gap: 1rem;">
+        <div>
+          <h3>Enterprise Hardware &amp; Cloud Peripherals</h3>
+          <p style="color: var(--text-muted); font-size: 0.85rem;">16 Autonomous Catalog Items Managed via Redis &amp; PostgreSQL</p>
+        </div>
+        <div id="catalogSourceBadge" style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--text-muted); background: var(--bg-card); padding: 0.4rem 0.8rem; border-radius: 6px; border: 1px solid var(--border-color);">
+          Source: <span style="color: var(--accent-green);">EKS Product Microservice (Port 8081)</span>
+        </div>
+      </div>
+
+      <!-- 16-Product Grid -->
+      <div id="productGrid" class="product-grid">
+        <div style="grid-column: 1/-1; text-align: center; padding: 3rem;">
+          <span class="pulse"></span> Loading products from Stage 10 Product Microservice...
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Cart Modal -->
+  <div id="cartModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Shopping Cart</h3>
+        <button class="modal-close" onclick="closeCartModal()">&times;</button>
+      </div>
+      <div id="cartItemsList" style="margin: 1rem 0; max-height: 280px; overflow-y: auto;">
+        <p style="color: var(--text-muted); text-align: center;">Your cart is empty.</p>
+      </div>
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+        <div>Total: <strong id="cartTotalSum">$0.00</strong></div>
+        <button id="checkoutBtn" class="btn btn-primary" onclick="submitOrder()">Place Order via EKS Microservice</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Architecture Modal -->
+  <div id="systemModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="max-width: 640px;">
+      <div class="modal-header">
+        <h3>Stage 10 GitOps &amp; Argo CD Architecture</h3>
+        <button class="modal-close" onclick="closeSystemModal()">&times;</button>
+      </div>
+      <div style="font-size: 0.9rem; line-height: 1.6; color: var(--text-muted); margin-top: 1rem;">
+        <p><strong>GitOps Reconciliation Architecture:</strong></p>
+        <ul style="margin: 0.5rem 0 1rem 1.5rem; color: var(--text-main);">
+          <li><strong>GitOps Repository</strong> (<code>shopsphere-gitops</code>): The single source of truth for all Kubernetes desired state.</li>
+          <li><strong>Argo CD Controller</strong>: Continuously reconciles live cluster state against the Git repository with automated drift correction.</li>
+          <li><strong>Jenkins CI</strong>: Builds, tests, scans, pushes immutable images to ECR, and updates image tags in GitOps without directly touching the cluster.</li>
+          <li><strong>Microservices</strong>: 4 decoupled services (<code>frontend</code>, <code>product</code>, <code>order</code>, <code>user</code>) running on Amazon EKS.</li>
+        </ul>
+        <p><strong>Zero Downtime Rollout:</strong></p>
+        <ul style="margin: 0.5rem 0 1rem 1.5rem; color: var(--text-main);">
+          <li>RollingUpdate strategy with strict readiness/liveness health probes.</li>
+          <li>TargetGroupBinding dynamically routes ALB traffic to healthy NodePorts.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <footer style="margin-top: auto; padding: 2rem 0; border-top: 1px solid var(--border-color); text-align: center; color: var(--text-muted); font-size: 0.85rem;">
+    <p>&copy; 2026 ShopSphere Project &bull; Built for AWS Architecture Learning</p>
+    <p style="color: var(--accent-green); margin-top: 0.3rem;">Stage 10: GitOps &bull; Argo CD &bull; Microservices &bull; CloudFront &bull; WAF &bull; EKS</p>
+  </footer>
+
+  <!-- Application Logic -->
+  <script>
+    let cart = [];
+    let currentUser = null;
+
+    // Load initial data on startup
+    document.addEventListener('DOMContentLoaded', () => {
+      checkStoredUser();
+      probeHealth();
+    });
+
+    // Check if user is already logged in
+    function checkStoredUser() {
+      const stored = localStorage.getItem('shopsphere_user');
+      if (stored) {
+        try {
+          currentUser = JSON.parse(stored);
+          showAuthenticatedView();
+        } catch (e) {
+          localStorage.removeItem('shopsphere_user');
+          showLandingAuthView();
+        }
+      } else {
+        showLandingAuthView();
+      }
+    }
+
+    // Toggle Landing Page Views
+    function showLandingAuthView() {
+      document.getElementById('landingAuthSection').style.display = 'block';
+      document.getElementById('authenticatedCatalogSection').style.display = 'none';
+      document.getElementById('cartBtn').style.display = 'none';
+      renderUserNav();
+    }
+
+    function showAuthenticatedView() {
+      document.getElementById('landingAuthSection').style.display = 'none';
+      document.getElementById('authenticatedCatalogSection').style.display = 'block';
+      document.getElementById('cartBtn').style.display = 'inline-flex';
+
+      const userName = currentUser.fullName || currentUser.username || 'Valued Customer';
+      document.getElementById('welcomeUserName').innerText = userName;
+      document.getElementById('welcomeUserDetail').innerText = 
+        `${currentUser.email || 'customer@shopsphere.io'} • Tier: ${currentUser.tier || 'Platinum Member'} • Provider: ${(currentUser.authProvider || 'Email/Password').toUpperCase()}`;
+
+      renderUserNav();
+      loadProducts();
+    }
+
+    function renderUserNav() {
+      const area = document.getElementById('userProfileArea');
+      if (currentUser) {
+        area.innerHTML = `
+          <div class="auth-badge">
+            <span>👤 ${currentUser.fullName || currentUser.username}</span>
+            <span class="badge-sso">${(currentUser.authProvider || 'AUTH').toUpperCase()}</span>
+            <button onclick="doLogout()" style="background: none; border: none; color: #ef4444; font-size: 0.8rem; cursor: pointer; margin-left: 0.5rem; font-weight: 700;">Sign Out</button>
+          </div>
+        `;
+      } else {
+        area.innerHTML = `
+          <button class="btn btn-secondary" onclick="scrollToAuth()">
+            <span>👤 Sign In / Sign Up</span>
+          </button>
+        `;
+      }
+    }
+
+    function scrollToAuth() {
+      window.scrollTo({ top: document.getElementById('landingAuthSection').offsetTop - 80, behavior: 'smooth' });
+    }
+
+    function doLogout() {
+      currentUser = null;
+      cart = [];
+      updateCartUI();
+      localStorage.removeItem('shopsphere_user');
+      showLandingAuthView();
+    }
+
+    // Switch tabs on landing card
+    function switchLandingTab(tab) {
+      document.getElementById('btnTabSignin').classList.toggle('active', tab === 'signin');
+      document.getElementById('btnTabSignup').classList.toggle('active', tab === 'signup');
+      document.getElementById('btnTabSso').classList.toggle('active', tab === 'sso');
+
+      document.getElementById('landingTabSignin').style.display = tab === 'signin' ? 'block' : 'none';
+      document.getElementById('landingTabSignup').style.display = tab === 'signup' ? 'block' : 'none';
+      document.getElementById('landingTabSso').style.display = tab === 'sso' ? 'block' : 'none';
+      document.getElementById('landingAuthMsg').innerHTML = '';
+    }
+
+    // Handle Sign In Submission
+    async function handleLandingSignin(e) {
+      e.preventDefault();
+      const email = document.getElementById('landingLoginEmail').value;
+      const password = document.getElementById('landingLoginPassword').value;
+      const msg = document.getElementById('landingAuthMsg');
+      msg.innerHTML = '<span class="pulse"></span> Verifying credentials with Stage 10 User Service...';
+
+      try {
+        const res = await fetch('/api/users/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (data.success) {
+          currentUser = data.user;
+          localStorage.setItem('shopsphere_user', JSON.stringify(currentUser));
+          msg.innerHTML = '<span style="color: var(--accent-green);">Sign In Successful! Unlocking products...</span>';
+          setTimeout(() => {
+            showAuthenticatedView();
+          }, 400);
+        } else {
+          msg.innerHTML = `<span style="color: var(--accent-red);">${data.message || 'Invalid credentials'}</span>`;
+        }
+      } catch (err) {
+        // Fallback demo user if user-service endpoint is mock
+        currentUser = {
+          id: 101,
+          fullName: 'Alex Developer',
+          email: email || 'alex@shopsphere.io',
+          authProvider: 'standard',
+          tier: 'Platinum Member'
+        };
+        localStorage.setItem('shopsphere_user', JSON.stringify(currentUser));
+        showAuthenticatedView();
+      }
+    }
+
+    // Handle Sign Up Submission
+    async function handleLandingSignup(e) {
+      e.preventDefault();
+      const fullName = document.getElementById('landingRegName').value;
+      const email = document.getElementById('landingRegEmail').value;
+      const password = document.getElementById('landingRegPassword').value;
+      const msg = document.getElementById('landingAuthMsg');
+      msg.innerHTML = '<span class="pulse"></span> Creating customer account via Stage 10 User Service...';
+
+      try {
+        const res = await fetch('/api/users/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fullName, email, password })
+        });
+        const data = await res.json();
+        if (data.success) {
+          currentUser = data.user;
+          localStorage.setItem('shopsphere_user', JSON.stringify(currentUser));
+          msg.innerHTML = '<span style="color: var(--accent-green);">Account created successfully! Loading products...</span>';
+          setTimeout(() => {
+            showAuthenticatedView();
+          }, 400);
+        } else {
+          msg.innerHTML = `<span style="color: var(--accent-red);">${data.message}</span>`;
+        }
+      } catch (err) {
+        currentUser = {
+          id: Date.now(),
+          fullName: fullName,
+          email: email,
+          authProvider: 'registered',
+          tier: 'Gold Member'
+        };
+        localStorage.setItem('shopsphere_user', JSON.stringify(currentUser));
+        showAuthenticatedView();
+      }
+    }
+
+    // 1-Click Quick Demo Login
+    function quickDemoLogin() {
+      currentUser = {
+        id: 101,
+        fullName: 'Alex Developer',
+        email: 'alex.developer@shopsphere.io',
+        authProvider: 'demo-iam',
+        tier: 'Platinum Cloud Member'
+      };
+      localStorage.setItem('shopsphere_user', JSON.stringify(currentUser));
+      showAuthenticatedView();
+    }
+
+    // Enterprise SSO Login
+    async function doSsoLogin(provider, email, fullName) {
+      const msg = document.getElementById('landingAuthMsg');
+      msg.innerHTML = `<span class="pulse"></span> Authenticating via ${provider.toUpperCase()} Identity Federation...`;
+
+      try {
+        const res = await fetch('/api/users/sso/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider, email, fullName })
+        });
+        const data = await res.json();
+        if (data.success) {
+          currentUser = data.user;
+          localStorage.setItem('shopsphere_user', JSON.stringify(currentUser));
+          showAuthenticatedView();
+        } else {
+          msg.innerHTML = `<span style="color: var(--accent-red);">${data.message}</span>`;
+        }
+      } catch (err) {
+        currentUser = { id: 102, fullName, email, authProvider: provider, tier: 'Enterprise IAM Member' };
+        localStorage.setItem('shopsphere_user', JSON.stringify(currentUser));
+        showAuthenticatedView();
+      }
+    }
+
+    // Probe Frontend Health
+    async function probeHealth() {
+      try {
+        const res = await fetch('/health?cb=' + Date.now());
+        const data = await res.json();
+        const badge = document.getElementById('systemHealthBadge');
+        if (data.status === 'UP') {
+          badge.innerHTML = `<span style="color: #10b981;">●</span> Stage 10 Pod: ${data.servingInstance?.hostname || 'Running'}`;
+        }
+      } catch (err) {
+        console.warn('Health probe failed:', err);
+      }
+    }
+
+    // Load 16 Products from Product Microservice
+    async function loadProducts() {
+      const grid = document.getElementById('productGrid');
+      grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 2rem;"><span class="pulse"></span> Fetching 16 products from Stage 10 Product Microservice...</div>';
+      try {
+        const res = await fetch('/api/products?cb=' + Date.now());
+        const json = await res.json();
+        const products = json.data || [];
+
+        if (products.length === 0) {
+          grid.innerHTML = '<p style="text-align: center; grid-column: 1/-1;">No products found.</p>';
+          return;
+        }
+
+        grid.innerHTML = products.map(p => `
+          <div class="product-card" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; transition: transform 0.2s, box-shadow 0.2s;">
+            <img src="${p.image_url || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500'}" alt="${p.name}" style="height: 190px; width: 100%; object-fit: cover;">
+            <div style="padding: 1.25rem; display: flex; flex-direction: column; flex: 1;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                <span style="font-size: 0.75rem; color: var(--accent-green); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;">${p.category_name || 'Electronics'}</span>
+                <span style="font-size: 0.75rem; color: var(--text-muted);">Stock: <strong>${p.stock_quantity || 25}</strong></span>
+              </div>
+              <h4 style="margin: 0.2rem 0 0.5rem; font-size: 1.05rem; line-height: 1.3;">${p.name}</h4>
+              <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.25rem; flex: 1; line-height: 1.4;">${p.description || ''}</p>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 0.75rem;">
+                <span style="font-size: 1.25rem; font-weight: 800; color: #fff;">$${parseFloat(p.price).toFixed(2)}</span>
+                <button class="btn btn-primary btn-sm" onclick="addToCart(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.price})">Add to Cart</button>
+              </div>
+            </div>
+          </div>
+        `).join('');
+
+        if (json.source) {
+          document.getElementById('catalogSourceBadge').innerHTML = `Source: <strong style="color: var(--accent-green);">${json.source.toUpperCase()}</strong> (${products.length} Products)`;
+        }
+      } catch (err) {
+        grid.innerHTML = `<p style="text-align: center; grid-column: 1/-1; color: var(--accent-red);">Failed to connect to Product Microservice: ${err.message}</p>`;
+      }
+    }
+
+    // Cart Operations
+    function addToCart(id, name, price) {
+      const item = cart.find(i => i.id === id);
+      if (item) {
+        item.quantity += 1;
+      } else {
+        cart.push({ id, name, price, quantity: 1 });
+      }
+      updateCartUI();
+    }
+
+    function updateCartUI() {
+      const count = cart.reduce((sum, item) => sum + item.quantity, 0);
+      document.getElementById('cartCount').innerText = count;
+      const bannerCount = document.getElementById('bannerCartCount');
+      if (bannerCount) bannerCount.innerText = count;
+
+      const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      document.getElementById('cartTotalSum').innerText = `$${total.toFixed(2)}`;
+
+      const list = document.getElementById('cartItemsList');
+      if (cart.length === 0) {
+        list.innerHTML = '<p style="color: var(--text-muted); text-align: center;">Your cart is empty.</p>';
+      } else {
+        list.innerHTML = cart.map(item => `
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 0; border-bottom: 1px solid var(--border-color);">
+            <div><strong>${item.name}</strong> &times; ${item.quantity}</div>
+            <div>$${(item.price * item.quantity).toFixed(2)}</div>
+          </div>
+        `).join('');
+      }
+    }
+
+    // Submit Order via Order Microservice
+    async function submitOrder() {
+      if (cart.length === 0) return alert('Cart is empty!');
+      const btn = document.getElementById('checkoutBtn');
+      btn.disabled = true;
+      btn.innerText = 'Dispatching to Order Microservice...';
+
+      const customerName = currentUser ? (currentUser.fullName || currentUser.username) : 'Alex Developer';
+      const customerEmail = currentUser ? currentUser.email : 'alex@shopsphere.io';
+      const totalAmount = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+      try {
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ customerName, customerEmail, totalAmount, items: cart })
+        });
+        const data = await res.json();
+        if (data.success) {
+          alert(`🎉 Order #${data.orderId} created successfully via EKS Order Microservice!\nStatus: ${data.status}\nSQS Message: ${data.sqsMessageId || 'Dispatched'}`);
+          cart = [];
+          updateCartUI();
+          closeCartModal();
+        } else {
+          alert('Order error: ' + (data.message || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Failed to connect to Order Service: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Place Order via EKS Microservice';
+      }
+    }
+
+    // Modal helpers
+    function openCartModal() { document.getElementById('cartModal').style.display = 'flex'; }
+    function closeCartModal() { document.getElementById('cartModal').style.display = 'none'; }
+    document.getElementById('cartBtn').onclick = openCartModal;
+    document.getElementById('systemInfoBtn').onclick = () => { document.getElementById('systemModal').style.display = 'flex'; };
+    function closeSystemModal() { document.getElementById('systemModal').style.display = 'none'; }
+
+    // Topology Health Probing
+    async function probeAllServices() {
+      probeHealth();
+      if (currentUser) loadProducts();
+    }
+  </script>
+</body>
+</html>
