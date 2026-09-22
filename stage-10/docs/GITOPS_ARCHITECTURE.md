@@ -4,7 +4,7 @@
 
 In Stage 10, ShopSphere transitions its continuous delivery model from **CI-driven imperative deployments** (`kubectl apply` executed by Jenkins) to **Declarative GitOps Delivery with Argo CD**.
 
-The cluster state is continuously reconciled against a dedicated GitOps repository ([`shopsphere-gitops`](file:///vagrant/dev_projects/shopsphere-aws-scaling/stage-10/gitops/)), establishing Git as the single source of truth for all Kubernetes workloads.
+The cluster state is continuously reconciled against a dedicated GitOps repository ([`shopsphere-aws-scaling-gitops`](file:///vagrant/dev_projects/shopsphere-aws-scaling/stage-10/gitops/)), establishing Git as the single source of truth for all Kubernetes workloads.
 
 ```mermaid
 flowchart TD
@@ -25,7 +25,7 @@ flowchart TD
     end
 
     subgraph GitOps_Control_Plane["GitOps Desired State & Reconciliation"]
-        GITOPS_UPDATE -->|git push| GITOPS_REPO["GitOps Repository (shopsphere-gitops)"]
+        GITOPS_UPDATE -->|git push| GITOPS_REPO["GitOps Repository (shopsphere-aws-scaling-gitops)"]
         GITOPS_REPO -->|Webhook / 3m Poll| ARGO["Argo CD Controller (argocd namespace)"]
         ARGO -->|Compare Desired vs Live| DRIFT{"State Match?"}
         DRIFT -->|OutOfSync| SYNC["Automated Reconciliation (RollingUpdate)"]
@@ -55,7 +55,7 @@ flowchart TD
 | :--- | :--- | :--- |
 | **Deployment Trigger** | Jenkins executes `kubectl apply` directly | Jenkins updates image tag in Git; Argo CD reconciles |
 | **Cluster Access** | Jenkins requires cluster-admin AWS credentials | Jenkins has **zero direct access** to EKS workloads |
-| **Source of Truth** | Ephemeral Jenkins build artifacts | Git repository history (`shopsphere-gitops`) |
+| **Source of Truth** | Ephemeral Jenkins build artifacts | Git repository history (`shopsphere-aws-scaling-gitops`) |
 | **Configuration Drift** | Untracked; manual `kubectl` edits go unnoticed | Detected immediately; automatically healed by Argo CD |
 | **Rollback Mechanism** | Manual `kubectl rollout undo` or complex script | Clean `git revert` or `git checkout` in GitOps repo |
 | **Environment Templating** | Shell `sed` string replacement | Native Kustomize base + production overlay |
@@ -65,7 +65,7 @@ flowchart TD
 ## 3. GitOps Repository Structure
 
 ```text
-shopsphere-gitops/
+shopsphere-aws-scaling-gitops/
 ├── apps/
 │   ├── frontend-service/
 │   │   ├── deployment.yaml

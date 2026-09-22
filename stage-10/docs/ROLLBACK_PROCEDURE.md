@@ -10,7 +10,7 @@ The only authoritative rollback mechanism is **Git reversion**.
 sequenceDiagram
     autonumber
     actor Engineer as DevOps Engineer
-    participant GitOps as GitOps Repository (shopsphere-gitops)
+    participant GitOps as GitOps Repository (shopsphere-aws-scaling-gitops)
     participant Argo as Argo CD Controller
     participant EKS as Amazon EKS Cluster
 
@@ -31,7 +31,7 @@ sequenceDiagram
 
 #### Step 1: Clone or Navigate to the GitOps Repository
 ```bash
-cd /vagrant/dev_projects/shopsphere-gitops
+cd /vagrant/dev_projects/shopsphere-aws-scaling-gitops
 git checkout main
 git pull origin main
 ```

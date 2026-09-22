@@ -188,7 +188,7 @@ variable "enable_user_path_routing" {
 variable "gitops_repo_url" {
   description = "GitOps repository URL containing Kubernetes desired state"
   type        = string
-  default     = "https://github.com/vinodk11/shopsphere-gitops.git"
+  default     = "https://github.com/vinodk11/shopsphere-aws-scaling-gitops.git"
 }
 
 variable "gitops_branch" {

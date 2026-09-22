@@ -11,9 +11,9 @@ variable "argocd_version" {
 }
 
 variable "gitops_repo_url" {
-  description = "GitOps repository URL containing Kubernetes desired state"
+  description = "Git repository URL containing Kubernetes desired state manifests."
   type        = string
-  default     = "https://github.com/vinodk11/shopsphere-gitops.git"
+  default     = "https://github.com/vinodk11/shopsphere-aws-scaling-gitops.git"
 }
 
 variable "gitops_branch" {

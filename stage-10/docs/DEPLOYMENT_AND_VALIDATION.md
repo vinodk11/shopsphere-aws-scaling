@@ -34,14 +34,14 @@ terraform output -json > stage10-outputs.json
 
 ---
 
-## 3. GitOps Repository Setup (`shopsphere-gitops`)
+## 3. GitOps Repository Setup (`shopsphere-aws-scaling-gitops`)
 
 Initialize the GitOps repository containing the Kustomize manifests:
 
 ```bash
-mkdir -p /vagrant/dev_projects/shopsphere-gitops
-cp -r /vagrant/dev_projects/shopsphere-aws-scaling/stage-10/gitops/* /vagrant/dev_projects/shopsphere-gitops/
-cd /vagrant/dev_projects/shopsphere-gitops
+mkdir -p /vagrant/dev_projects/shopsphere-aws-scaling-gitops
+cp -r /vagrant/dev_projects/shopsphere-aws-scaling/stage-10/gitops/* /vagrant/dev_projects/shopsphere-aws-scaling-gitops/
+cd /vagrant/dev_projects/shopsphere-aws-scaling-gitops
 git init -b main
 git config user.name "ShopSphere GitOps Admin"
 git config user.email "gitops@shopsphere.io"
@@ -51,7 +51,7 @@ git commit -m "feat: bootstrap stage-10 gitops desired state manifests"
 
 If using a remote GitHub repository:
 ```bash
-git remote add origin https://github.com/vinodk11/shopsphere-gitops.git
+git remote add origin https://github.com/vinodk11/shopsphere-aws-scaling-gitops.git
 git push -u origin main
 ```
 
@@ -59,7 +59,7 @@ git push -u origin main
 
 ## 4. Application CI Pipeline Execution (`stage-10-app`)
 
-The application pipeline builds, tests, scans, pushes images to ECR, and commits the new image tags into `shopsphere-gitops`:
+The application pipeline builds, tests, scans, pushes images to ECR, and commits the new image tags into `shopsphere-aws-scaling-gitops`:
 
 ```bash
 # Trigger application pipeline

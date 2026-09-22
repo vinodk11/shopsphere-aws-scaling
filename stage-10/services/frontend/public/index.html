@@ -282,7 +282,7 @@
       <div style="font-size: 0.9rem; line-height: 1.6; color: var(--text-muted); margin-top: 1rem;">
         <p><strong>GitOps Reconciliation Architecture:</strong></p>
         <ul style="margin: 0.5rem 0 1rem 1.5rem; color: var(--text-main);">
-          <li><strong>GitOps Repository</strong> (<code>shopsphere-gitops</code>): The single source of truth for all Kubernetes desired state.</li>
+          <li><strong>GitOps Repository</strong> (<code>shopsphere-aws-scaling-gitops</code>): The single source of truth for all Kubernetes desired state.</li>
           <li><strong>Argo CD Controller</strong>: Continuously reconciles live cluster state against the Git repository with automated drift correction.</li>
           <li><strong>Jenkins CI</strong>: Builds, tests, scans, pushes immutable images to ECR, and updates image tags in GitOps without directly touching the cluster.</li>
           <li><strong>Microservices</strong>: 4 decoupled services (<code>frontend</code>, <code>product</code>, <code>order</code>, <code>user</code>) running on Amazon EKS.</li>

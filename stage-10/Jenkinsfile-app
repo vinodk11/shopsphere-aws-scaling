@@ -9,7 +9,7 @@ pipeline {
   agent any
 
   parameters {
-    string(name: 'GITOPS_REPO_URL', defaultValue: 'https://github.com/vinodk11/shopsphere-gitops.git', description: 'GitOps desired state repository.')
+    string(name: 'GITOPS_REPO_URL', defaultValue: 'https://github.com/vinodk11/shopsphere-aws-scaling-gitops.git', description: 'GitOps desired state repository.')
     string(name: 'GITOPS_BRANCH', defaultValue: 'main', description: 'Branch in GitOps repository to update.')
     booleanParam(name: 'RUN_DAST', defaultValue: true, description: 'Run OWASP ZAP baseline scan after rollout.')
     string(name: 'DAST_URL', defaultValue: 'https://d33f8dq17c8295.cloudfront.net', description: 'Target URL for DAST testing.')
@@ -145,17 +145,21 @@ pipeline {
           echo "=== Updating GitOps Repository with Image Tag: ${env.RELEASE_TAG} ==="
           sh """
             mkdir -p /tmp/gitops-work && rm -rf /tmp/gitops-work/*
-            if [ -d "/var/lib/jenkins/workspace/shopsphere-gitops/.git" ]; then
-              cp -r /var/lib/jenkins/workspace/shopsphere-gitops /tmp/gitops-work/shopsphere-gitops
+            if [ -d "/var/lib/jenkins/workspace/shopsphere-aws-scaling-gitops/.git" ]; then
+              cp -r /var/lib/jenkins/workspace/shopsphere-aws-scaling-gitops /tmp/gitops-work/shopsphere-aws-scaling-gitops
+            elif [ -d "/vagrant/dev_projects/shopsphere-aws-scaling-gitops/.git" ]; then
+              cp -r /vagrant/dev_projects/shopsphere-aws-scaling-gitops /tmp/gitops-work/shopsphere-aws-scaling-gitops
+            elif [ -d "/var/lib/jenkins/workspace/shopsphere-gitops/.git" ]; then
+              cp -r /var/lib/jenkins/workspace/shopsphere-gitops /tmp/gitops-work/shopsphere-aws-scaling-gitops
             elif [ -d "/vagrant/dev_projects/shopsphere-gitops/.git" ]; then
-              cp -r /vagrant/dev_projects/shopsphere-gitops /tmp/gitops-work/shopsphere-gitops
+              cp -r /vagrant/dev_projects/shopsphere-gitops /tmp/gitops-work/shopsphere-aws-scaling-gitops
             else
-              mkdir -p /tmp/gitops-work/shopsphere-gitops
-              cp -r stage-10/gitops/* /tmp/gitops-work/shopsphere-gitops/
-              (cd /tmp/gitops-work/shopsphere-gitops && git init && git config user.name "Jenkins GitOps Bot" && git config user.email "gitops@shopsphere.io" && git add . && git commit -m "feat(gitops): initial bootstrap")
+              mkdir -p /tmp/gitops-work/shopsphere-aws-scaling-gitops
+              cp -r stage-10/gitops/* /tmp/gitops-work/shopsphere-aws-scaling-gitops/
+              (cd /tmp/gitops-work/shopsphere-aws-scaling-gitops && git init && git config user.name "Jenkins GitOps Bot" && git config user.email "gitops@shopsphere.io" && git add . && git commit -m "feat(gitops): initial bootstrap")
             fi
 
-            cd /tmp/gitops-work/shopsphere-gitops/environments/production
+            cd /tmp/gitops-work/shopsphere-aws-scaling-gitops/environments/production
             sed -i -E 's/(name: shopsphere-frontend.*newTag: ).*/\\1${env.RELEASE_TAG}/' kustomization.yaml 2>/dev/null || true
             sed -i -E 's/(name: shopsphere-product.*newTag: ).*/\\1${env.RELEASE_TAG}/' kustomization.yaml 2>/dev/null || true
             sed -i -E 's/(name: shopsphere-order.*newTag: ).*/\\1${env.RELEASE_TAG}/' kustomization.yaml 2>/dev/null || true

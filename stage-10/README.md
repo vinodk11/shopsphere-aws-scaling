@@ -4,7 +4,7 @@
 
 **Stage 10** represents the modern enterprise pinnacle of the ShopSphere AWS scaling journey, introducing **GitOps Continuous Delivery with Argo CD** on top of the Amazon EKS microservices architecture.
 
-Application deployment responsibility is permanently shifted from the Jenkins CI server to **Argo CD**, ensuring that all runtime configurations are strictly declared in and continuously reconciled from the GitOps desired state repository ([`shopsphere-gitops`](file:///vagrant/dev_projects/shopsphere-aws-scaling/stage-10/gitops/)).
+Application deployment responsibility is permanently shifted from the Jenkins CI server to **Argo CD**, ensuring that all runtime configurations are strictly declared in and continuously reconciled from the GitOps desired state repository ([`shopsphere-aws-scaling-gitops`](file:///vagrant/dev_projects/shopsphere-aws-scaling/stage-10/gitops/)).
 
 ---
 
@@ -41,7 +41,7 @@ stage-10/
 │   ├── order/                         # Async Order Processing + SQS
 │   └── user/                          # Auth, Registration & Enterprise SSO
 │
-├── gitops/                            # GitOps Desired State (shopsphere-gitops)
+├── gitops/                            # GitOps Desired State (shopsphere-aws-scaling-gitops)
 │   ├── apps/                          # Kustomize Base Manifests per Microservice
 │   │   ├── frontend-service/
 │   │   ├── product-service/
