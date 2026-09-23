@@ -1,5 +1,5 @@
 # ==============================================================================
-# Global & Environment Variables — Stage 5 (SQS + Lambda + ElastiCache + RDS)
+# Global & Environment Variables — Stage 5 (Amazon SQS + AWS Lambda)
 # ==============================================================================
 
 variable "aws_region" {
@@ -21,236 +21,96 @@ variable "environment" {
 }
 
 # ------------------------------------------------------------------------------
-# Network Variables
+# Discovery & Override Inputs from Stages 1-4
 # ------------------------------------------------------------------------------
 
-variable "vpc_cidr" {
-  description = "The CIDR block for the dedicated ShopSphere VPC"
+variable "vpc_id" {
+  description = "Optional existing VPC ID from Stage 1 (if empty, dynamically discovered via tags)"
   type        = string
-  default     = "10.0.0.0/16"
+  default     = ""
 }
 
-variable "public_subnet_cidrs" {
-  description = "The CIDR blocks for public subnets (ALB and EC2 ASG tier across multi-AZ)"
-  type        = list(string)
-  default     = ["10.0.1.0/24", "10.0.2.0/24"]
-}
-
-variable "private_db_subnet_cidrs" {
-  description = "The CIDR blocks for private database subnets (Amazon RDS Tier)"
-  type        = list(string)
-  default     = ["10.0.10.0/24", "10.0.11.0/24"]
-}
-
-variable "private_cache_subnet_cidrs" {
-  description = "The CIDR blocks for private cache subnets (Amazon ElastiCache Redis Tier)"
-  type        = list(string)
-  default     = ["10.0.20.0/24", "10.0.21.0/24"]
-}
-
-variable "availability_zones" {
-  description = "Explicit list of Availability Zones to use (leave null to dynamically select first 2 AZs in region)"
-  type        = list(string)
-  default     = null
-}
-
-# ------------------------------------------------------------------------------
-# Security Variables
-# ------------------------------------------------------------------------------
-
-variable "admin_cidr" {
-  description = "List of IPv4 CIDR blocks authorized for SSH administrative access"
-  type        = list(string)
-  default     = ["0.0.0.0/0"]
-}
-
-# ------------------------------------------------------------------------------
-# EC2 Auto Scaling & Compute Variables
-# ------------------------------------------------------------------------------
-
-variable "instance_type" {
-  description = "EC2 instance size for the application server"
+variable "db_host" {
+  description = "Optional Amazon RDS endpoint hostname from Stage 2 (if empty, dynamically discovered)"
   type        = string
-  default     = "t3.micro"
+  default     = ""
 }
 
-variable "root_volume_size" {
-  description = "Size of the encrypted root EBS volume in GB"
+variable "db_port" {
+  description = "Port number for Amazon RDS PostgreSQL"
   type        = number
-  default     = 20
+  default     = 5432
 }
-
-variable "ssh_key_name" {
-  description = "Optional name of existing AWS EC2 KeyPair for SSH key-based access"
-  type        = string
-  default     = null
-}
-
-variable "custom_ami_id" {
-  description = "Optional custom AMI ID override (if omitted, latest Amazon Linux 2023 is resolved dynamically)"
-  type        = string
-  default     = null
-}
-
-variable "asg_min_size" {
-  description = "Minimum number of instances in the Auto Scaling Group"
-  type        = number
-  default     = 2
-}
-
-variable "asg_max_size" {
-  description = "Maximum number of instances in the Auto Scaling Group"
-  type        = number
-  default     = 4
-}
-
-variable "asg_desired_capacity" {
-  description = "Desired number of instances in the Auto Scaling Group"
-  type        = number
-  default     = 2
-}
-
-variable "asg_target_cpu_utilization" {
-  description = "Target CPU utilization percentage for dynamic auto-scaling"
-  type        = number
-  default     = 70.0
-}
-
-# ------------------------------------------------------------------------------
-# Application Configuration Variables
-# ------------------------------------------------------------------------------
-
-variable "app_port" {
-  description = "Internal listening port for the ShopSphere application server"
-  type        = number
-  default     = 8080
-}
-
-variable "app_repo_url" {
-  description = "Git repository URL to clone ShopSphere application source from"
-  type        = string
-  default     = "https://github.com/vinodk11/shopsphere-aws-scaling.git"
-}
-
-# ------------------------------------------------------------------------------
-# Amazon RDS PostgreSQL Database Variables
-# ------------------------------------------------------------------------------
 
 variable "db_name" {
-  description = "The database name to create on Amazon RDS"
+  description = "Database name on Amazon RDS"
   type        = string
   default     = "shopspheredb"
 }
 
 variable "db_user" {
-  description = "The master username for Amazon RDS PostgreSQL"
+  description = "Database master username"
   type        = string
   default     = "shopsphere_user"
 }
 
 variable "db_password" {
-  description = "The master password for Amazon RDS PostgreSQL"
+  description = "Database master password"
   type        = string
+  default     = ""
   sensitive   = true
-  default     = "ShopSphere2026SecurePass!"
 }
 
-variable "db_engine_version" {
-  description = "PostgreSQL engine version on Amazon RDS"
+variable "ec2_role_name" {
+  description = "Optional name of the existing Stage 3 EC2 ASG IAM role"
   type        = string
-  default     = "15.7"
+  default     = ""
 }
 
-variable "db_instance_class" {
-  description = "The instance class for Amazon RDS PostgreSQL"
+variable "alb_arn" {
+  description = "Optional ARN of the Application Load Balancer from Stage 3"
   type        = string
-  default     = "db.t3.micro"
+  default     = ""
 }
 
-variable "db_allocated_storage" {
-  description = "Initial allocated storage in GB for RDS"
-  type        = number
-  default     = 20
-}
-
-variable "db_max_allocated_storage" {
-  description = "Upper storage auto-scaling threshold in GB for RDS"
-  type        = number
-  default     = 100
-}
-
-variable "db_multi_az" {
-  description = "Enable Multi-AZ synchronous standby replica for RDS"
-  type        = bool
-  default     = false
-}
-
-variable "db_skip_final_snapshot" {
-  description = "Skip creating final RDS snapshot during destruction"
-  type        = bool
-  default     = true
-}
-
-variable "db_backup_retention_period" {
-  description = "Number of days to retain automated daily backups"
-  type        = number
-  default     = 7
+variable "alb_dns_name" {
+  description = "Optional DNS name of the Application Load Balancer from Stage 3"
+  type        = string
+  default     = ""
 }
 
 # ------------------------------------------------------------------------------
-# Amazon ElastiCache Redis Variables
-# ------------------------------------------------------------------------------
-
-variable "cache_node_type" {
-  description = "Compute and memory capacity for the ElastiCache Redis node"
-  type        = string
-  default     = "cache.t3.micro"
-}
-
-variable "redis_engine_version" {
-  description = "Redis engine version on Amazon ElastiCache"
-  type        = string
-  default     = "7.1"
-}
-
-variable "redis_port" {
-  description = "Port for the Redis cluster"
-  type        = number
-  default     = 6379
-}
-
-# ------------------------------------------------------------------------------
-# Amazon SQS Queue Variables
+# Amazon SQS Variables
 # ------------------------------------------------------------------------------
 
 variable "sqs_queue_name" {
-  description = "Name of the main order processing SQS queue (leave empty to use default pattern)"
+  description = "Explicit name for the primary SQS queue"
   type        = string
   default     = ""
 }
 
 variable "sqs_dlq_name" {
-  description = "Name of the dead-letter SQS queue (leave empty to use default pattern)"
+  description = "Explicit name for the dead-letter queue (DLQ)"
   type        = string
   default     = ""
 }
 
 variable "sqs_visibility_timeout_seconds" {
-  description = "Visibility timeout in seconds for the SQS order queue (must be >= Lambda timeout)"
+  description = "Visibility timeout in seconds for messages in the main queue"
   type        = number
-  default     = 60
+  default     = 300
 }
 
 variable "sqs_message_retention_seconds" {
-  description = "Number of seconds SQS retains messages in the main queue (default: 4 days = 345600)"
+  description = "Message retention period in seconds for the main queue"
   type        = number
-  default     = 345600
+  default     = 345600 # 4 days
 }
 
 variable "sqs_max_receive_count" {
-  description = "Maximum delivery attempts before an unacknowledged order message is routed to the DLQ"
+  description = "Maximum deliveries before a poisoned message is redirected to the DLQ"
   type        = number
-  default     = 3
+  default     = 5
 }
 
 variable "sqs_managed_sse_enabled" {
@@ -260,47 +120,47 @@ variable "sqs_managed_sse_enabled" {
 }
 
 # ------------------------------------------------------------------------------
-# AWS Lambda Worker Variables
+# AWS Lambda Variables
 # ------------------------------------------------------------------------------
 
 variable "lambda_function_name" {
-  description = "Name of the Lambda function (leave empty to use default pattern)"
+  description = "Explicit name for the order processing Lambda worker"
   type        = string
   default     = ""
 }
 
 variable "lambda_runtime" {
-  description = "Node.js Lambda runtime version"
+  description = "Runtime environment for the Lambda worker"
   type        = string
-  default     = "nodejs20.x"
+  default     = "nodejs18.x"
 }
 
 variable "lambda_timeout" {
-  description = "Lambda function execution timeout in seconds"
+  description = "Execution timeout in seconds for the Lambda function"
   type        = number
   default     = 30
 }
 
 variable "lambda_memory_size" {
-  description = "Memory allocated to the Lambda worker function in MB"
+  description = "Memory allocated to the Lambda function in MB"
   type        = number
   default     = 256
 }
 
 variable "lambda_batch_size" {
-  description = "Batch size for SQS message consumption by Lambda"
+  description = "Maximum number of SQS records delivered to Lambda per invocation batch"
   type        = number
   default     = 10
 }
 
 variable "lambda_maximum_batching_window_in_seconds" {
-  description = "Maximum batching window in seconds for SQS polling"
+  description = "Maximum time in seconds to gather records before invoking Lambda"
   type        = number
   default     = 5
 }
 
 variable "lambda_log_retention_in_days" {
-  description = "Days to retain CloudWatch logs for the Lambda function"
+  description = "Number of days to retain CloudWatch logs for the Lambda function"
   type        = number
   default     = 14
 }

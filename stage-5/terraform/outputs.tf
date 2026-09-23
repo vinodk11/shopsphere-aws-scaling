@@ -1,64 +1,6 @@
 # ==============================================================================
-# Outputs — Stage 5 (SQS + AWS Lambda + ElastiCache Redis + RDS + ALB + ASG)
+# Outputs — Stage 5 (Amazon SQS + AWS Lambda Asynchronous Processing)
 # ==============================================================================
-
-# ------------------------------------------------------------------------------
-# Ingress & Compute Fleet Outputs
-# ------------------------------------------------------------------------------
-
-output "alb_dns_name" {
-  description = "Public DNS name of the Application Load Balancer"
-  value       = module.alb.alb_dns_name
-}
-
-output "application_url" {
-  description = "HTTP URL to access ShopSphere via Application Load Balancer"
-  value       = module.alb.alb_url
-}
-
-output "target_group_arn" {
-  description = "ARN of the ALB Target Group"
-  value       = module.alb.target_group_arn
-}
-
-output "asg_name" {
-  description = "Name of the Auto Scaling Group"
-  value       = module.asg.asg_name
-}
-
-# ------------------------------------------------------------------------------
-# Database & Cache Outputs
-# ------------------------------------------------------------------------------
-
-output "rds_endpoint" {
-  description = "Connection endpoint of Amazon RDS PostgreSQL"
-  value       = module.rds.db_instance_endpoint
-}
-
-output "rds_address" {
-  description = "Hostname of Amazon RDS PostgreSQL"
-  value       = module.rds.db_instance_address
-}
-
-output "rds_port" {
-  description = "Database port for Amazon RDS PostgreSQL"
-  value       = module.rds.db_instance_port
-}
-
-output "db_name" {
-  description = "Database name"
-  value       = var.db_name
-}
-
-output "redis_endpoint" {
-  description = "Primary endpoint address for Amazon ElastiCache Redis"
-  value       = module.elasticache.redis_endpoint
-}
-
-output "redis_port" {
-  description = "Port number for Amazon ElastiCache Redis"
-  value       = module.elasticache.redis_port
-}
 
 # ------------------------------------------------------------------------------
 # Messaging & Serverless Asynchronous Processing Outputs (Stage 5)
@@ -109,12 +51,22 @@ output "lambda_cloudwatch_log_group" {
   value       = module.lambda.log_group_name
 }
 
-output "ec2_iam_role_arn" {
-  description = "ARN of the EC2 IAM Role with SQS publish permissions"
-  value       = module.iam.ec2_role_arn
-}
-
 output "lambda_iam_role_arn" {
   description = "ARN of the Lambda IAM Role with SQS consume permissions"
   value       = module.iam.lambda_role_arn
+}
+
+output "ec2_sqs_policy_arn" {
+  description = "ARN of the EC2 IAM policy permitting SQS publish"
+  value       = module.iam.ec2_sqs_policy_arn
+}
+
+output "alb_dns_name" {
+  description = "Public DNS name of the Application Load Balancer from Stage 3"
+  value       = local.alb_dns_name
+}
+
+output "application_url" {
+  description = "HTTP URL to access ShopSphere via Application Load Balancer"
+  value       = local.alb_dns_name != "" ? "http://${local.alb_dns_name}" : ""
 }
