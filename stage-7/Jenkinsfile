@@ -253,6 +253,9 @@ pipeline {
                             DATE_TAG=$(date +%Y%m%d%H%M%S)
                             AMI_NAME="shopsphere-golden-ami-${DATE_TAG}"
                             ASG_NAME=$(grep -o '"autoscaling_group_name": *"[^"]*"' terraform.tfstate 2>/dev/null | head -n1 | cut -d '"' -f4 || true)
+                            if [ -z "$ASG_NAME" ]; then
+                                ASG_NAME=$(aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[?contains(AutoScalingGroupName, 'shopsphere')].AutoScalingGroupName | [0]" --output text 2>/dev/null || true)
+                            fi
 
                             echo "Golden AMI Tag Name: ${AMI_NAME}"
                             echo "Auto Scaling Group : ${ASG_NAME:-shopsphere-stage-7-asg}"
@@ -315,6 +318,9 @@ pipeline {
                     dir("${env.TF_DIR}") {
                         sh '''
                             LT_ID=$(grep -o '"launch_template_id": *"[^"]*"' terraform.tfstate 2>/dev/null | head -n1 | cut -d '"' -f4 || true)
+                            if [ -z "$LT_ID" ]; then
+                                LT_ID=$(aws ec2 describe-launch-templates --query "LaunchTemplates[?contains(LaunchTemplateName, 'shopsphere')].LaunchTemplateId | [0]" --output text 2>/dev/null || true)
+                            fi
                             echo "Target Launch Template: ${LT_ID:-shopsphere-stage-7-lt}"
 
                             if command -v aws >/dev/null 2>&1 && [ -n "$LT_ID" ]; then
@@ -345,6 +351,9 @@ pipeline {
                     dir("${env.TF_DIR}") {
                         sh '''
                             ASG_NAME=$(grep -o '"autoscaling_group_name": *"[^"]*"' terraform.tfstate 2>/dev/null | head -n1 | cut -d '"' -f4 || true)
+                            if [ -z "$ASG_NAME" ]; then
+                                ASG_NAME=$(aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[?contains(AutoScalingGroupName, 'shopsphere')].AutoScalingGroupName | [0]" --output text 2>/dev/null || true)
+                            fi
                             echo "Target Auto Scaling Group: ${ASG_NAME:-shopsphere-stage-7-asg}"
 
                             if command -v aws >/dev/null 2>&1 && [ -n "$ASG_NAME" ]; then
@@ -376,8 +385,19 @@ pipeline {
                     sh '''
                         set +e
                         CF_DOMAIN=$(grep -o '"cloudfront_domain_name": *"[^"]*"' terraform.tfstate 2>/dev/null | head -n1 | cut -d '"' -f4 || true)
+                        if [ -z "$CF_DOMAIN" ]; then
+                            CF_DOMAIN=$(aws cloudfront list-distributions --query "DistributionList.Items[?contains(Comment, 'ShopSphere')].DomainName | [0]" --output text 2>/dev/null || true)
+                        fi
+
                         ALB_DNS=$(grep -o '"alb_dns_name": *"[^"]*"' terraform.tfstate 2>/dev/null | head -n1 | cut -d '"' -f4 || true)
+                        if [ -z "$ALB_DNS" ]; then
+                            ALB_DNS=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?contains(LoadBalancerName, 'shopsphere')].DNSName | [0]" --output text 2>/dev/null || true)
+                        fi
+
                         ASG_NAME=$(grep -o '"autoscaling_group_name": *"[^"]*"' terraform.tfstate 2>/dev/null | head -n1 | cut -d '"' -f4 || true)
+                        if [ -z "$ASG_NAME" ]; then
+                            ASG_NAME=$(aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[?contains(AutoScalingGroupName, 'shopsphere')].AutoScalingGroupName | [0]" --output text 2>/dev/null || true)
+                        fi
 
                         echo "================================================================="
                         echo "🔍 Multi-Tier Health Verification: App, ALB & CloudFront (CNF)"

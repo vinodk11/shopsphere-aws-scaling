@@ -1,5 +1,6 @@
 # ==============================================================================
-# Data Sources — Stage 6
+# Data Sources — Stage 7 (DevSecOps Quality Gates & Baseline Infrastructure)
+# Discovers persistent Stage 1-6 infrastructure with ZERO re-creation or destruction
 # ==============================================================================
 
 # Query available Availability Zones in the selected AWS region
@@ -7,28 +8,37 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
-# Dynamically lookup the latest Amazon Linux 2023 AMI (HVM, 64-bit x86, gp3)
-data "aws_ami" "amazon_linux_2023" {
-  most_recent = true
-  owners      = ["amazon"]
-
+# 1. Discover Stage 1 VPC
+data "aws_vpc" "stage1" {
+  count = var.vpc_id == "" ? 1 : 0
   filter {
-    name   = "name"
-    values = ["al2023-ami-2023.*-x86_64"]
+    name   = "tag:Name"
+    values = ["${var.project_name}-*-vpc"]
   }
+}
 
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
+# 2. Discover Stage 3 ALB
+data "aws_lb" "alb" {
+  count = var.alb_arn != "" ? 1 : 0
+  arn   = var.alb_arn
+}
+
+data "aws_lb" "alb_by_tag" {
+  count = var.alb_arn == "" ? 1 : 0
+  tags = {
+    Tier = "Public-ALB"
   }
+}
 
-  filter {
-    name   = "root-device-type"
-    values = ["ebs"]
-  }
+# 3. Discover Stage 3 Target Group
+data "aws_lb_target_group" "tg" {
+  count = var.target_group_arn != "" ? 1 : 0
+  arn   = var.target_group_arn
+}
 
-  filter {
-    name   = "state"
-    values = ["available"]
+data "aws_lb_target_group" "tg_by_tag" {
+  count = var.target_group_arn == "" ? 1 : 0
+  tags = {
+    Tier = "Compute-TargetGroup"
   }
 }
