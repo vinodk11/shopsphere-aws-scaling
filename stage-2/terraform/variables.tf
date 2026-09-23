@@ -20,9 +20,29 @@ variable "environment" {
   default     = "stage2"
 }
 
-# ------------------------------------------------------------------------------
-# Network Variables
-# ------------------------------------------------------------------------------
+variable "vpc_id" {
+  description = "Optional existing VPC ID from Stage 1 (if empty, dynamically discovered via tags)"
+  type        = string
+  default     = ""
+}
+
+variable "private_subnet_ids" {
+  description = "Optional list of private database subnet IDs (if empty, dynamically discovered from Stage 1)"
+  type        = list(string)
+  default     = []
+}
+
+variable "ec2_security_group_id" {
+  description = "Optional existing Stage 1 EC2 security group ID (if empty, dynamically discovered via tags)"
+  type        = string
+  default     = ""
+}
+
+variable "db_port" {
+  description = "Port on which PostgreSQL accepts incoming connections"
+  type        = number
+  default     = 5432
+}
 
 variable "vpc_cidr" {
   description = "The CIDR block for the dedicated ShopSphere VPC"

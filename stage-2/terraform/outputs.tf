@@ -3,75 +3,42 @@
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# Networking Outputs
+# Discovered Stage 1 Foundation Outputs
 # ------------------------------------------------------------------------------
 
 output "vpc_id" {
-  description = "The ID of the ShopSphere VPC"
-  value       = module.vpc.vpc_id
+  description = "The ID of the persistent ShopSphere VPC discovered from Stage 1"
+  value       = local.vpc_id
 }
 
-output "public_subnet_id" {
-  description = "The ID of the public subnet hosting the EC2 compute instance"
-  value       = module.vpc.public_subnet_id
+output "stage1_ec2_instance_id" {
+  description = "The ID of the running Stage 1 EC2 monolith server"
+  value       = try(data.aws_instances.stage1_ec2.ids[0], "pending")
 }
 
-output "private_subnet_ids" {
-  description = "List of IDs of private subnets hosting the Amazon RDS database"
-  value       = module.vpc.private_subnet_ids
-}
-
-# ------------------------------------------------------------------------------
-# Security Group Outputs
-# ------------------------------------------------------------------------------
-
-output "ec2_security_group_id" {
-  description = "The ID of the EC2 Instance Security Group"
-  value       = module.security_group.ec2_security_group_id
-}
-
-output "rds_security_group_id" {
-  description = "The ID of the Amazon RDS Security Group"
-  value       = module.security_group.rds_security_group_id
-}
-
-# ------------------------------------------------------------------------------
-# EC2 Compute Tier Outputs
-# ------------------------------------------------------------------------------
-
-output "ec2_instance_id" {
-  description = "The ID of the ShopSphere EC2 application instance"
-  value       = module.ec2.instance_id
-}
-
-output "ec2_private_ip" {
-  description = "The private IPv4 address of the EC2 instance"
-  value       = module.ec2.private_ip
-}
-
-output "ec2_public_ip" {
-  description = "The public IPv4 address of the EC2 instance"
-  value       = module.ec2.public_ip
+output "stage1_ec2_public_ip" {
+  description = "The public IPv4 address of the Stage 1 EC2 instance"
+  value       = try(data.aws_instances.stage1_ec2.public_ips[0], "pending")
 }
 
 output "application_url" {
-  description = "The public web URL to access the ShopSphere application"
-  value       = "http://${module.ec2.public_ip}"
+  description = "The public web URL of the ShopSphere storefront"
+  value       = length(try(data.aws_instances.stage1_ec2.public_ips, [])) > 0 ? "http://${data.aws_instances.stage1_ec2.public_ips[0]}" : "Discovering..."
 }
 
 output "health_check_url" {
-  description = "The URL for application and RDS database health checks"
-  value       = "http://${module.ec2.public_ip}/health"
-}
-
-output "ssh_connection_command" {
-  description = "Example SSH connection command or SSM session command"
-  value       = var.ssh_key_name != null ? "ssh -i <path-to-${var.ssh_key_name}.pem> ec2-user@${module.ec2.public_ip}" : "aws ssm start-session --target ${module.ec2.instance_id}"
+  description = "The URL for application health check"
+  value       = length(try(data.aws_instances.stage1_ec2.public_ips, [])) > 0 ? "http://${data.aws_instances.stage1_ec2.public_ips[0]}/health" : "Discovering..."
 }
 
 # ------------------------------------------------------------------------------
-# Amazon RDS Database Tier Outputs
+# Amazon RDS Database Tier Outputs (Provisioned in Stage 2)
 # ------------------------------------------------------------------------------
+
+output "rds_security_group_id" {
+  description = "The ID of the Amazon RDS Security Group"
+  value       = aws_security_group.rds.id
+}
 
 output "rds_endpoint" {
   description = "The connection endpoint for Amazon RDS PostgreSQL (host:port)"
@@ -96,4 +63,9 @@ output "rds_db_name" {
 output "rds_instance_id" {
   description = "The identifier of the Amazon RDS instance"
   value       = module.rds.db_instance_id
+}
+
+output "connect_ec2_command" {
+  description = "Run this helper script to connect the Stage 1 EC2 monolith to the new Amazon RDS instance"
+  value       = "./scripts/connect_ec2_to_rds.sh"
 }

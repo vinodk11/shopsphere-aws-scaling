@@ -8,8 +8,23 @@ output "vpc_id" {
 }
 
 output "subnet_id" {
-  description = "The ID of the public subnet where the EC2 instance is deployed"
+  description = "The ID of the primary public subnet where the EC2 instance is deployed"
   value       = module.vpc.public_subnet_id
+}
+
+output "public_subnet_ids" {
+  description = "List of public subnet IDs across Multi-AZ"
+  value       = module.vpc.public_subnet_ids
+}
+
+output "private_db_subnet_ids" {
+  description = "List of private database subnet IDs for Amazon RDS (for Stage 2+)"
+  value       = module.vpc.private_db_subnet_ids
+}
+
+output "private_cache_subnet_ids" {
+  description = "List of private cache subnet IDs for Amazon ElastiCache Redis (for Stage 4+)"
+  value       = module.vpc.private_cache_subnet_ids
 }
 
 output "security_group_id" {

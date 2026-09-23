@@ -15,14 +15,39 @@ variable "vpc_cidr" {
 }
 
 variable "public_subnet_cidr" {
-  description = "CIDR block for the public subnet"
+  description = "Fallback single CIDR block for the public subnet"
   type        = string
   default     = "10.0.1.0/24"
 }
 
+variable "public_subnet_cidrs" {
+  description = "List of CIDR blocks for public subnets (Multi-AZ)"
+  type        = list(string)
+  default     = ["10.0.1.0/24", "10.0.2.0/24"]
+}
+
+variable "private_db_subnet_cidrs" {
+  description = "List of CIDR blocks for private database subnets (Amazon RDS across Multi-AZ)"
+  type        = list(string)
+  default     = ["10.0.10.0/24", "10.0.11.0/24"]
+}
+
+variable "private_cache_subnet_cidrs" {
+  description = "List of CIDR blocks for private cache subnets (Amazon ElastiCache Redis across Multi-AZ)"
+  type        = list(string)
+  default     = ["10.0.20.0/24", "10.0.21.0/24"]
+}
+
 variable "availability_zone" {
-  description = "AWS Availability Zone for the single public subnet"
+  description = "Single Availability Zone fallback"
   type        = string
+  default     = null
+}
+
+variable "availability_zones" {
+  description = "List of Availability Zones to distribute subnets across"
+  type        = list(string)
+  default     = []
 }
 
 variable "tags" {

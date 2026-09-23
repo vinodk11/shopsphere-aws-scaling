@@ -3,8 +3,11 @@
 # ==============================================================================
 
 locals {
-  # Resolve AZ dynamically if not explicitly specified
-  availability_zone = coalesce(var.availability_zone, data.aws_availability_zones.available.names[0])
+  # Resolve AZs dynamically if not explicitly specified (requires at least 2 for future Multi-AZ tiers)
+  selected_azs = coalesce(
+    var.availability_zones,
+    slice(data.aws_availability_zones.available.names, 0, 2)
+  )
 
   # Resolve AMI dynamically if not explicitly overridden
   ami_id = coalesce(var.custom_ami_id, data.aws_ami.amazon_linux_2023.id)
@@ -18,17 +21,19 @@ locals {
 }
 
 # ------------------------------------------------------------------------------
-# Module 1: Dedicated VPC Networking
+# Module 1: Dedicated Multi-Tier Multi-AZ VPC Networking
 # ------------------------------------------------------------------------------
 module "vpc" {
   source = "./modules/vpc"
 
-  project_name       = var.project_name
-  environment        = var.environment
-  vpc_cidr           = var.vpc_cidr
-  public_subnet_cidr = var.public_subnet_cidr
-  availability_zone  = local.availability_zone
-  tags               = local.common_tags
+  project_name               = var.project_name
+  environment                = var.environment
+  vpc_cidr                   = var.vpc_cidr
+  public_subnet_cidrs        = var.public_subnet_cidrs
+  private_db_subnet_cidrs    = var.private_db_subnet_cidrs
+  private_cache_subnet_cidrs = var.private_cache_subnet_cidrs
+  availability_zones         = local.selected_azs
+  tags                       = local.common_tags
 }
 
 # ------------------------------------------------------------------------------
