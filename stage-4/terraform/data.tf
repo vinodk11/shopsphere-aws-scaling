@@ -1,5 +1,7 @@
 # ==============================================================================
-# Data Sources - Stage 4
+# Data Sources - Stage 4 (Amazon ElastiCache Redis In-Memory Caching)
+# Discovers persistent Stage 1 Networking, Stage 2 RDS, and Stage 3 ASG/ALB
+# with ZERO re-creation or destruction
 # ==============================================================================
 
 # Query available Availability Zones in the selected AWS region
@@ -7,28 +9,50 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
-# Dynamically lookup the latest Amazon Linux 2023 AMI (HVM, 64-bit x86, gp3)
-data "aws_ami" "amazon_linux_2023" {
-  most_recent = true
-  owners      = ["amazon"]
-
+# 1. Discover Stage 1 VPC
+data "aws_vpc" "stage1" {
+  count = var.vpc_id == "" ? 1 : 0
   filter {
-    name   = "name"
-    values = ["al2023-ami-2023.*-x86_64"]
+    name   = "tag:Name"
+    values = ["${var.project_name}-*-vpc"]
   }
+}
 
+# 2. Discover Stage 1 Private Cache Subnets across Multi-AZ
+data "aws_subnets" "cache" {
+  count = length(var.cache_subnet_ids) == 0 ? 1 : 0
   filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
+    name   = "vpc-id"
+    values = [local.vpc_id]
   }
-
   filter {
-    name   = "root-device-type"
-    values = ["ebs"]
+    name   = "tag:Tier"
+    values = ["Private-Cache"]
   }
+}
 
+# 3. Discover Stage 3 EC2 ASG Security Group
+data "aws_security_group" "asg" {
+  count = var.asg_security_group_id == "" ? 1 : 0
   filter {
-    name   = "state"
-    values = ["available"]
+    name   = "vpc-id"
+    values = [local.vpc_id]
+  }
+  filter {
+    name   = "tag:Name"
+    values = ["${var.project_name}-*-ec2-sg"]
+  }
+}
+
+# 4. Discover Stage 3 ALB (for DNS name and health/cache testing)
+data "aws_lb" "alb" {
+  count = var.alb_arn != "" ? 1 : 0
+  arn   = var.alb_arn
+}
+
+data "aws_lb" "alb_by_tag" {
+  count = var.alb_arn == "" ? 1 : 0
+  tags = {
+    Tier = "Public-ALB"
   }
 }

@@ -1,5 +1,5 @@
 # ==============================================================================
-# Global & Environment Variables - Stage 4 (ElastiCache Redis + RDS + ALB + ASG)
+# Global & Environment Variables - Stage 4 (ElastiCache Redis In-Memory Caching)
 # ==============================================================================
 
 variable "aws_region" {
@@ -21,180 +21,37 @@ variable "environment" {
 }
 
 # ------------------------------------------------------------------------------
-# Network Variables
+# Discovery & Override Inputs from Stages 1-3
 # ------------------------------------------------------------------------------
 
-variable "vpc_cidr" {
-  description = "The CIDR block for the dedicated ShopSphere VPC"
+variable "vpc_id" {
+  description = "Optional existing VPC ID from Stage 1 (if empty, dynamically discovered via tags)"
   type        = string
-  default     = "10.0.0.0/16"
+  default     = ""
 }
 
-variable "public_subnet_cidrs" {
-  description = "The CIDR blocks for public subnets (ALB and EC2 ASG tier across multi-AZ)"
+variable "cache_subnet_ids" {
+  description = "Optional existing private cache subnet IDs from Stage 1 (if empty, dynamically discovered via tags)"
   type        = list(string)
-  default     = ["10.0.1.0/24", "10.0.2.0/24"]
+  default     = []
 }
 
-variable "private_db_subnet_cidrs" {
-  description = "The CIDR blocks for private database subnets (Amazon RDS Tier)"
-  type        = list(string)
-  default     = ["10.0.10.0/24", "10.0.11.0/24"]
-}
-
-variable "private_cache_subnet_cidrs" {
-  description = "The CIDR blocks for private cache subnets (Amazon ElastiCache Redis Tier)"
-  type        = list(string)
-  default     = ["10.0.20.0/24", "10.0.21.0/24"]
-}
-
-variable "availability_zones" {
-  description = "Explicit list of Availability Zones to use (leave null to dynamically select first 2 AZs in region)"
-  type        = list(string)
-  default     = null
-}
-
-# ------------------------------------------------------------------------------
-# Security Variables
-# ------------------------------------------------------------------------------
-
-variable "admin_cidr" {
-  description = "List of IPv4 CIDR blocks authorized for SSH administrative access"
-  type        = list(string)
-  default     = ["0.0.0.0/0"]
-}
-
-# ------------------------------------------------------------------------------
-# EC2 Auto Scaling & Compute Variables
-# ------------------------------------------------------------------------------
-
-variable "instance_type" {
-  description = "EC2 instance size for the application server"
+variable "asg_security_group_id" {
+  description = "Optional EC2 ASG security group ID from Stage 3 (if empty, dynamically discovered via tags)"
   type        = string
-  default     = "t3.micro"
+  default     = ""
 }
 
-variable "root_volume_size" {
-  description = "Size of the encrypted root EBS volume in GB"
-  type        = number
-  default     = 20
-}
-
-variable "ssh_key_name" {
-  description = "Optional name of existing AWS EC2 KeyPair for SSH key-based access"
+variable "alb_arn" {
+  description = "Optional ARN of the Application Load Balancer from Stage 3 (if empty, dynamically discovered via tags)"
   type        = string
-  default     = null
+  default     = ""
 }
 
-variable "custom_ami_id" {
-  description = "Optional custom AMI ID override (if omitted, latest Amazon Linux 2023 is resolved dynamically)"
+variable "alb_dns_name" {
+  description = "Optional DNS name of the Application Load Balancer from Stage 3 (if empty, dynamically discovered via tags)"
   type        = string
-  default     = null
-}
-
-variable "asg_min_size" {
-  description = "Minimum number of instances in the Auto Scaling Group"
-  type        = number
-  default     = 2
-}
-
-variable "asg_max_size" {
-  description = "Maximum number of instances in the Auto Scaling Group"
-  type        = number
-  default     = 4
-}
-
-variable "asg_desired_capacity" {
-  description = "Desired number of instances in the Auto Scaling Group"
-  type        = number
-  default     = 2
-}
-
-variable "asg_target_cpu_utilization" {
-  description = "Target CPU utilization percentage for dynamic auto-scaling"
-  type        = number
-  default     = 70.0
-}
-
-# ------------------------------------------------------------------------------
-# Application Configuration Variables
-# ------------------------------------------------------------------------------
-
-variable "app_port" {
-  description = "Internal listening port for the ShopSphere application server"
-  type        = number
-  default     = 8080
-}
-
-variable "app_repo_url" {
-  description = "Git repository URL to clone ShopSphere application source from"
-  type        = string
-  default     = "https://github.com/vinodk11/shopsphere-aws-scaling.git"
-}
-
-# ------------------------------------------------------------------------------
-# Amazon RDS PostgreSQL Database Variables
-# ------------------------------------------------------------------------------
-
-variable "db_name" {
-  description = "The database name to create on Amazon RDS"
-  type        = string
-  default     = "shopspheredb"
-}
-
-variable "db_user" {
-  description = "The master username for Amazon RDS PostgreSQL"
-  type        = string
-  default     = "shopsphere_user"
-}
-
-variable "db_password" {
-  description = "The master password for Amazon RDS PostgreSQL"
-  type        = string
-  sensitive   = true
-  default     = "ShopSphere2026SecurePass!"
-}
-
-variable "db_engine_version" {
-  description = "PostgreSQL engine version on Amazon RDS"
-  type        = string
-  default     = "15.7"
-}
-
-variable "db_instance_class" {
-  description = "The instance class for Amazon RDS PostgreSQL"
-  type        = string
-  default     = "db.t3.micro"
-}
-
-variable "db_allocated_storage" {
-  description = "Initial allocated storage in GB for RDS"
-  type        = number
-  default     = 20
-}
-
-variable "db_max_allocated_storage" {
-  description = "Upper storage auto-scaling threshold in GB for RDS"
-  type        = number
-  default     = 100
-}
-
-variable "db_multi_az" {
-  description = "Enable Multi-AZ synchronous standby replica for RDS"
-  type        = bool
-  default     = false
-}
-
-variable "db_skip_final_snapshot" {
-  description = "Skip creating final RDS snapshot during destruction"
-  type        = bool
-  default     = true
-}
-
-variable "db_backup_retention_period" {
-  description = "Number of days to retain automated daily backups"
-  type        = number
-  default     = 7
+  default     = ""
 }
 
 # ------------------------------------------------------------------------------
@@ -202,19 +59,29 @@ variable "db_backup_retention_period" {
 # ------------------------------------------------------------------------------
 
 variable "cache_node_type" {
-  description = "Compute and memory capacity for the ElastiCache Redis node"
+  description = "The compute and memory instance type for ElastiCache Redis nodes"
   type        = string
   default     = "cache.t3.micro"
 }
 
 variable "redis_engine_version" {
-  description = "Redis engine version on Amazon ElastiCache"
+  description = "The Redis caching engine version"
   type        = string
-  default     = "7.1"
+  default     = "7.0"
 }
 
 variable "redis_port" {
-  description = "Port for the Redis cluster"
+  description = "The port on which the Redis cluster accepts TCP connections"
   type        = number
   default     = 6379
+}
+
+# ------------------------------------------------------------------------------
+# Security Variables
+# ------------------------------------------------------------------------------
+
+variable "admin_cidr" {
+  description = "List of IPv4 CIDR blocks authorized for administrative access"
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
 }

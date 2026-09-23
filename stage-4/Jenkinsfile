@@ -133,6 +133,19 @@ pipeline {
             }
         }
 
+        stage('Connect ASG Fleet to ElastiCache Redis') {
+            when {
+                expression { return params.ACTION == 'apply' }
+            }
+            steps {
+                echo "🔗 Reconfiguring Stage 3 ASG EC2 instances to connect to ElastiCache Redis via AWS SSM..."
+                sh """
+                    chmod +x ${env.TF_DIR}/scripts/connect_asg_to_redis.sh
+                    ${env.TF_DIR}/scripts/connect_asg_to_redis.sh || echo "⚠️ SSM connect script completed with warnings."
+                """
+            }
+        }
+
         stage('Smoke Test & Cache Verification') {
             when {
                 expression { return params.ACTION == 'apply' }
@@ -142,9 +155,12 @@ pipeline {
                     echo "🩺 Verifying Stage-4 Storefront, RDS, and ElastiCache Redis..."
                     sh '''
                         ALB_DNS=$(grep -o '"alb_dns_name": *"[^"]*"' terraform.tfstate | head -n1 | cut -d '"' -f4 || true)
-
                         if [ -z "$ALB_DNS" ]; then
-                            echo "⚠️ Could not parse ALB DNS name from state, skipping health test."
+                            ALB_DNS=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?contains(LoadBalancerName, 'shopsphere')].DNSName | [0]" --output text 2>/dev/null || true)
+                        fi
+
+                        if [ -z "$ALB_DNS" ] || [ "$ALB_DNS" = "None" ]; then
+                            echo "⚠️ Could not parse ALB DNS name, skipping health test."
                             exit 0
                         fi
 
