@@ -3,41 +3,36 @@
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# Networking Outputs
+# Discovered Foundation Outputs
 # ------------------------------------------------------------------------------
 
 output "vpc_id" {
-  description = "The ID of the ShopSphere VPC"
-  value       = module.vpc.vpc_id
+  description = "The ID of the persistent ShopSphere VPC discovered from Stage 1"
+  value       = local.vpc_id
 }
 
 output "public_subnet_ids" {
-  description = "List of IDs of public subnets hosting the ALB and EC2 ASG instances"
-  value       = module.vpc.public_subnet_ids
+  description = "List of public subnet IDs hosting the ALB and EC2 ASG instances"
+  value       = local.public_subnet_ids
 }
 
-output "private_subnet_ids" {
-  description = "List of IDs of private subnets hosting the Amazon RDS database"
-  value       = module.vpc.private_subnet_ids
+output "rds_endpoint" {
+  description = "The Amazon RDS endpoint used by the ASG compute fleet"
+  value       = local.db_host
 }
 
 # ------------------------------------------------------------------------------
-# Security Group Outputs
+# Security Group Outputs (Stage 3)
 # ------------------------------------------------------------------------------
 
 output "alb_security_group_id" {
   description = "The ID of the Application Load Balancer Security Group"
-  value       = module.security_group.alb_security_group_id
+  value       = aws_security_group.alb.id
 }
 
 output "ec2_security_group_id" {
   description = "The ID of the EC2 Auto Scaling Group Security Group"
-  value       = module.security_group.ec2_security_group_id
-}
-
-output "rds_security_group_id" {
-  description = "The ID of the Amazon RDS Security Group"
-  value       = module.security_group.rds_security_group_id
+  value       = aws_security_group.ec2.id
 }
 
 # ------------------------------------------------------------------------------
@@ -96,35 +91,6 @@ output "asg_desired_capacity" {
 output "launch_template_id" {
   description = "The ID of the EC2 Launch Template powering the ASG"
   value       = module.asg.launch_template_id
-}
-
-# ------------------------------------------------------------------------------
-# Amazon RDS Database Tier Outputs
-# ------------------------------------------------------------------------------
-
-output "rds_endpoint" {
-  description = "The connection endpoint for Amazon RDS PostgreSQL (host:port)"
-  value       = module.rds.db_instance_endpoint
-}
-
-output "rds_address" {
-  description = "The hostname / DNS address of the Amazon RDS PostgreSQL instance"
-  value       = module.rds.db_instance_address
-}
-
-output "rds_port" {
-  description = "The port of the Amazon RDS PostgreSQL instance"
-  value       = module.rds.db_instance_port
-}
-
-output "rds_db_name" {
-  description = "The database name on Amazon RDS"
-  value       = module.rds.db_instance_name
-}
-
-output "rds_instance_id" {
-  description = "The identifier of the Amazon RDS instance"
-  value       = module.rds.db_instance_id
 }
 
 # ------------------------------------------------------------------------------

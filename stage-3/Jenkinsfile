@@ -141,10 +141,10 @@ pipeline {
                 dir("${env.TF_DIR}") {
                     echo "🩺 Verifying Stage-3 Storefront & Application Load Balancer..."
                     sh '''
-                        ALB_DNS=$(grep -o '"alb_dns_name": *"[^"]*"' terraform.tfstate | head -n1 | cut -d '"' -f4 || true)
+                        ALB_DNS=$(terraform output -raw alb_dns_name 2>/dev/null || grep -o '"alb_dns_name": *"[^"]*"' terraform.tfstate | head -n1 | cut -d '"' -f4 || true)
 
-                        if [ -z "$ALB_DNS" ]; then
-                            echo "⚠️ Could not parse ALB DNS name from state, skipping health test."
+                        if [ -z "$ALB_DNS" ] || [ "$ALB_DNS" = "null" ]; then
+                            echo "⚠️ Could not parse ALB DNS name, skipping health test."
                             exit 0
                         fi
 

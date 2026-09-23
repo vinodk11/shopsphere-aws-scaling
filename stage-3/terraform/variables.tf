@@ -20,9 +20,35 @@ variable "environment" {
   default     = "stage3"
 }
 
-# ------------------------------------------------------------------------------
-# Network Variables
-# ------------------------------------------------------------------------------
+variable "vpc_id" {
+  description = "Optional existing VPC ID from Stage 1 (if empty, dynamically discovered via tags)"
+  type        = string
+  default     = ""
+}
+
+variable "public_subnet_ids" {
+  description = "Optional list of public subnet IDs (if empty, dynamically discovered from Stage 1)"
+  type        = list(string)
+  default     = []
+}
+
+variable "db_host" {
+  description = "Optional Amazon RDS database host override (if empty, discovered from Stage 2)"
+  type        = string
+  default     = ""
+}
+
+variable "db_port" {
+  description = "Port on which the database accepts connections"
+  type        = number
+  default     = 5432
+}
+
+variable "rds_security_group_id" {
+  description = "Optional existing Stage 2 RDS security group ID (if empty, dynamically discovered)"
+  type        = string
+  default     = ""
+}
 
 variable "vpc_cidr" {
   description = "The CIDR block for the dedicated ShopSphere VPC"
