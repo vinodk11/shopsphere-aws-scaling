@@ -142,10 +142,17 @@ pipeline {
                     echo "🩺 Verifying Stage-6 CloudFront CDN, AWS WAFv2, and Origin Header Lockdown..."
                     sh '''
                         CF_DOMAIN=$(grep -o '"cloudfront_domain_name": *"[^"]*"' terraform.tfstate | head -n1 | cut -d '"' -f4 || true)
-                        ALB_DNS=$(grep -o '"alb_dns_name": *"[^"]*"' terraform.tfstate | head -n1 | cut -d '"' -f4 || true)
-
                         if [ -z "$CF_DOMAIN" ]; then
-                            echo "⚠️ Could not parse CloudFront domain name from state, skipping edge verification."
+                            CF_DOMAIN=$(aws cloudfront list-distributions --query "DistributionList.Items[?contains(Comment, 'ShopSphere')].DomainName | [0]" --output text 2>/dev/null || true)
+                        fi
+
+                        ALB_DNS=$(grep -o '"alb_dns_name": *"[^"]*"' terraform.tfstate | head -n1 | cut -d '"' -f4 || true)
+                        if [ -z "$ALB_DNS" ]; then
+                            ALB_DNS=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?contains(LoadBalancerName, 'shopsphere')].DNSName | [0]" --output text 2>/dev/null || true)
+                        fi
+
+                        if [ -z "$CF_DOMAIN" ] || [ "$CF_DOMAIN" = "None" ]; then
+                            echo "⚠️ Could not parse CloudFront domain name, skipping edge verification."
                             exit 0
                         fi
 

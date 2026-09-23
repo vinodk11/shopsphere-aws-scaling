@@ -1,34 +1,17 @@
 # ==============================================================================
-# Data Sources — Stage 6
+# Data Sources — Stage 6 (CloudFront Edge CDN + AWS WAFv2 Security)
+# Discovers persistent Stage 3 ALB with ZERO re-creation or destruction
 # ==============================================================================
 
-# Query available Availability Zones in the selected AWS region
-data "aws_availability_zones" "available" {
-  state = "available"
+# 1. Discover Stage 3 ALB
+data "aws_lb" "alb" {
+  count = var.alb_arn != "" ? 1 : 0
+  arn   = var.alb_arn
 }
 
-# Dynamically lookup the latest Amazon Linux 2023 AMI (HVM, 64-bit x86, gp3)
-data "aws_ami" "amazon_linux_2023" {
-  most_recent = true
-  owners      = ["amazon"]
-
-  filter {
-    name   = "name"
-    values = ["al2023-ami-2023.*-x86_64"]
-  }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-
-  filter {
-    name   = "root-device-type"
-    values = ["ebs"]
-  }
-
-  filter {
-    name   = "state"
-    values = ["available"]
+data "aws_lb" "alb_by_tag" {
+  count = var.alb_arn == "" ? 1 : 0
+  tags = {
+    Tier = "Public-ALB"
   }
 }
