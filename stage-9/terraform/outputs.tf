@@ -134,16 +134,20 @@ output "order_service_sqs_role_arn" {
 
 
 output "sqs_queue_url" {
-  description = "Existing Stage 8 SQS queue URL"
-  value       = data.aws_sqs_queue.orders[0].url
+  description = "Existing Stage 5 SQS queue URL"
+  value = local.sqs_queue_arn != "" ? (
+    can(regex("^arn:aws:sqs:", local.sqs_queue_arn)) ? "https://sqs.${var.aws_region}.amazonaws.com/${split(":", local.sqs_queue_arn)[4]}/${split(":", local.sqs_queue_arn)[5]}" : local.sqs_queue_arn
+  ) : (length(data.aws_sqs_queue.orders) > 0 ? data.aws_sqs_queue.orders[0].url : "")
 }
 
 output "db_host" {
-  value = var.db_host
+  description = "Resolved RDS PostgreSQL endpoint"
+  value       = local.db_host
 }
 
 output "redis_host" {
-  value = var.redis_host
+  description = "Resolved ElastiCache Redis endpoint"
+  value       = local.redis_host
 }
 
 output "db_name" {

@@ -19,9 +19,11 @@ blue_weight  = 100
 green_weight = 0
 
 # Path-based routing triggers (enable when microservices are validated)
-enable_product_path_routing = false
-enable_order_path_routing   = false
+enable_product_path_routing = true
+enable_order_path_routing   = true
+enable_user_path_routing    = true
 
-# Existing data services (set these from Stage 8 outputs)
-db_host    = "REPLACE_WITH_STAGE8_RDS_ENDPOINT"
-redis_host = "REPLACE_WITH_STAGE8_REDIS_ENDPOINT"
+# Existing data services (auto-discovered from Stage 2 RDS and Stage 4 Redis by default, or set explicitly)
+# db_host    = "shopsphere-stage2-postgres.xxxxxx.us-east-1.rds.amazonaws.com"
+# redis_host = "shopsphere-stage4-redis.xxxxxx.0001.use1.cache.amazonaws.com"
+

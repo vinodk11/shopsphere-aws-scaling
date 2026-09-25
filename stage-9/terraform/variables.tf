@@ -73,6 +73,12 @@ variable "sqs_queue_arn" {
   default     = ""
 }
 
+variable "sqs_queue_name" {
+  description = "Optional name of the existing SQS queue for order processing (e.g. from Stage 5)"
+  type        = string
+  default     = ""
+}
+
 variable "custom_header_name" {
   description = "Header name for CloudFront origin verification (matches Stage 8)"
   type        = string

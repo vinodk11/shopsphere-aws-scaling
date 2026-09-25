@@ -51,20 +51,22 @@ locals {
   )
 }
 
-# Existing ALB: support either an explicit ARN or the Stage 8 name.
+# Existing ALB: support either an explicit ARN or tag-based discovery from Stage 3
 data "aws_lb" "existing_by_arn" {
   count = var.alb_arn != "" ? 1 : 0
   arn   = var.alb_arn
 }
 
-data "aws_lb" "existing_by_name" {
+data "aws_lb" "existing_by_tag" {
   count = var.alb_arn == "" ? 1 : 0
-  name  = "${var.project_name}-stage8-alb"
+  tags = {
+    Tier = "Public-ALB"
+  }
 }
 
 locals {
-  alb_arn = var.alb_arn != "" ? data.aws_lb.existing_by_arn[0].arn : data.aws_lb.existing_by_name[0].arn
-  alb_sg  = var.alb_arn != "" ? tolist(data.aws_lb.existing_by_arn[0].security_groups)[0] : tolist(data.aws_lb.existing_by_name[0].security_groups)[0]
+  alb_arn = var.alb_arn != "" ? data.aws_lb.existing_by_arn[0].arn : data.aws_lb.existing_by_tag[0].arn
+  alb_sg  = var.alb_arn != "" ? tolist(data.aws_lb.existing_by_arn[0].security_groups)[0] : tolist(data.aws_lb.existing_by_tag[0].security_groups)[0]
 }
 
 data "aws_lb_listener" "existing_http" {
@@ -77,29 +79,33 @@ locals {
   alb_listener_arn = var.alb_listener_arn != "" ? var.alb_listener_arn : data.aws_lb_listener.existing_http[0].arn
 }
 
-# Existing Stage 8 target group.
+# Existing Stage 8 / Monolith target group used as Blue (discovered via ARN or Tier tag)
 data "aws_lb_target_group" "stage8_by_arn" {
   count = var.stage8_target_group_arn != "" ? 1 : 0
   arn   = var.stage8_target_group_arn
 }
 
-data "aws_lb_target_group" "stage8_by_name" {
+data "aws_lb_target_group" "stage8_by_tag" {
   count = var.stage8_target_group_arn == "" ? 1 : 0
-  name  = "${var.project_name}-stage8-tg"
+  tags = {
+    Tier = "Compute-TargetGroup"
+  }
 }
 
 locals {
-  stage8_tg_arn = var.stage8_target_group_arn != "" ? data.aws_lb_target_group.stage8_by_arn[0].arn : data.aws_lb_target_group.stage8_by_name[0].arn
+  stage8_tg_arn = var.stage8_target_group_arn != "" ? data.aws_lb_target_group.stage8_by_arn[0].arn : data.aws_lb_target_group.stage8_by_tag[0].arn
 }
 
-# Discover existing SQS Queue ARN
+# Discover existing SQS Queue ARN from Stage 5
 data "aws_sqs_queue" "orders" {
   count = var.sqs_queue_arn == "" ? 1 : 0
-  name  = "${var.project_name}-stage8-order-processing-queue"
+  name  = var.sqs_queue_name != "" ? var.sqs_queue_name : "${var.project_name}-stage5-order-processing-queue"
 }
 
 locals {
-  sqs_queue_arn = var.sqs_queue_arn != "" ? var.sqs_queue_arn : data.aws_sqs_queue.orders[0].arn
+  sqs_queue_arn = var.sqs_queue_arn != "" ? var.sqs_queue_arn : (
+    length(data.aws_sqs_queue.orders) > 0 ? data.aws_sqs_queue.orders[0].arn : ""
+  )
 }
 
 # Discover existing RDS Security Group
@@ -126,6 +132,37 @@ data "aws_security_group" "redis" {
 
 locals {
   redis_sg_id = var.redis_security_group_id != "" ? var.redis_security_group_id : data.aws_security_group.redis[0].id
+}
+
+# Discover Stage 2 RDS Endpoint dynamically if placeholder is present
+data "aws_db_instances" "stage2_rds" {
+  filter {
+    name   = "db-instance-id"
+    values = ["${var.project_name}-*-postgres"]
+  }
+}
+
+data "aws_db_instance" "stage2_rds" {
+  count                  = length(try(data.aws_db_instances.stage2_rds.instance_identifiers, [])) > 0 ? 1 : 0
+  db_instance_identifier = data.aws_db_instances.stage2_rds.instance_identifiers[0]
+}
+
+locals {
+  db_host = (var.db_host != "" && !can(regex("cy9mak0su1oj", var.db_host))) ? var.db_host : (
+    length(try(data.aws_db_instance.stage2_rds, [])) > 0 ? data.aws_db_instance.stage2_rds[0].address : var.db_host
+  )
+}
+
+# Discover Stage 4 ElastiCache Redis Endpoint dynamically if placeholder is present
+data "aws_elasticache_cluster" "stage4_redis" {
+  count      = (var.redis_host == "" || can(regex("ekxmke", var.redis_host))) ? 1 : 0
+  cluster_id = "${var.project_name}-stage4-redis"
+}
+
+locals {
+  redis_host = (var.redis_host != "" && !can(regex("ekxmke", var.redis_host))) ? var.redis_host : (
+    length(try(data.aws_elasticache_cluster.stage4_redis, [])) > 0 ? try(data.aws_elasticache_cluster.stage4_redis[0].cache_nodes[0].address, var.redis_host) : var.redis_host
+  )
 }
 
 # ------------------------------------------------------------------------------
