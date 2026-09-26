@@ -71,6 +71,6 @@ data "aws_security_group" "rds" {
   }
   filter {
     name   = "tag:Name"
-    values = ["${var.project_name}-*-rds-sg"]
+    values = ["${var.project_name}-stage2-rds-sg"]
   }
 }

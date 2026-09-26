@@ -101,7 +101,7 @@ data "aws_security_group" "rds" {
   count = var.rds_security_group_id == "" ? 1 : 0
   filter {
     name   = "group-name"
-    values = ["${var.project_name}-*-rds-sg"]
+    values = ["${var.project_name}-stage2-rds-sg"]
   }
 }
 
@@ -113,7 +113,7 @@ data "aws_security_group" "redis" {
   count = var.redis_security_group_id == "" ? 1 : 0
   filter {
     name   = "group-name"
-    values = ["${var.project_name}-*-redis-sg"]
+    values = ["${var.project_name}-stage4-redis-sg"]
   }
 }
 

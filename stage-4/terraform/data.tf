@@ -40,7 +40,7 @@ data "aws_security_group" "asg" {
   }
   filter {
     name   = "tag:Name"
-    values = ["${var.project_name}-*-ec2-sg"]
+    values = ["${var.project_name}-stage3-ec2-sg"]
   }
 }
 
