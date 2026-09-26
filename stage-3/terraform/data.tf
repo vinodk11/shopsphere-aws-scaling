@@ -57,16 +57,9 @@ data "aws_subnets" "public" {
 }
 
 # 3. Discover Stage 2 Amazon RDS PostgreSQL Database
-data "aws_db_instances" "stage2_rds" {
-  filter {
-    name   = "db-instance-id"
-    values = ["${var.project_name}-*-postgres"]
-  }
-}
-
 data "aws_db_instance" "stage2_rds" {
-  count                  = var.db_host == "" && length(try(data.aws_db_instances.stage2_rds.instance_identifiers, [])) > 0 ? 1 : 0
-  db_instance_identifier = data.aws_db_instances.stage2_rds.instance_identifiers[0]
+  count                  = var.db_host == "" ? 1 : 0
+  db_instance_identifier = var.db_instance_identifier != "" ? var.db_instance_identifier : "${var.project_name}-stage2-postgres"
 }
 
 # 4. Discover Stage 2 RDS Security Group

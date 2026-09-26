@@ -134,22 +134,15 @@ locals {
   redis_sg_id = var.redis_security_group_id != "" ? var.redis_security_group_id : data.aws_security_group.redis[0].id
 }
 
-# Discover Stage 2 RDS Endpoint dynamically if placeholder is present
-data "aws_db_instances" "stage2_rds" {
-  filter {
-    name   = "db-instance-id"
-    values = ["${var.project_name}-*-postgres"]
-  }
-}
-
+# Discover Stage 2 RDS Endpoint dynamically if placeholder is present or db_host is empty
 data "aws_db_instance" "stage2_rds" {
-  count                  = length(try(data.aws_db_instances.stage2_rds.instance_identifiers, [])) > 0 ? 1 : 0
-  db_instance_identifier = data.aws_db_instances.stage2_rds.instance_identifiers[0]
+  count                  = (var.db_host == "" || can(regex("cy9mak0su1oj", var.db_host))) ? 1 : 0
+  db_instance_identifier = var.db_instance_identifier != "" ? var.db_instance_identifier : "${var.project_name}-stage2-postgres"
 }
 
 locals {
   db_host = (var.db_host != "" && !can(regex("cy9mak0su1oj", var.db_host))) ? var.db_host : (
-    length(try(data.aws_db_instance.stage2_rds, [])) > 0 ? data.aws_db_instance.stage2_rds[0].address : var.db_host
+    length(data.aws_db_instance.stage2_rds) > 0 ? data.aws_db_instance.stage2_rds[0].address : var.db_host
   )
 }
 

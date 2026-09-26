@@ -38,6 +38,12 @@ variable "db_host" {
   default     = ""
 }
 
+variable "db_instance_identifier" {
+  description = "Optional Amazon RDS database instance identifier (default: shopsphere-stage2-postgres)"
+  type        = string
+  default     = ""
+}
+
 variable "db_port" {
   description = "Port on which the database accepts connections"
   type        = number

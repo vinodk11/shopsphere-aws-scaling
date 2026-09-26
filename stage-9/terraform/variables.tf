@@ -93,6 +93,12 @@ variable "custom_header_value" {
 }
 
 
+variable "db_instance_identifier" {
+  description = "Optional Amazon RDS database instance identifier (default: shopsphere-stage2-postgres)"
+  type        = string
+  default     = ""
+}
+
 variable "db_host" {
   description = "Existing Stage 8 RDS endpoint used by Stage 9. Set explicitly; do not discover by guessing."
   type        = string
