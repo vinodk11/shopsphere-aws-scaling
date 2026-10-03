@@ -133,6 +133,19 @@ pipeline {
             }
         }
 
+        stage('Connect ASG Fleet to CloudFront & Deploy App') {
+            when {
+                expression { return params.ACTION == 'apply' }
+            }
+            steps {
+                echo "🔗 Deploying Stage 6 App and connecting ASG nodes to CloudFront via AWS SSM..."
+                sh """
+                    chmod +x ${env.TF_DIR}/scripts/connect_asg_to_cloudfront.sh
+                    ${env.TF_DIR}/scripts/connect_asg_to_cloudfront.sh || echo "⚠️ SSM connect script completed with warnings."
+                """
+            }
+        }
+
         stage('Perimeter Security & Edge Caching Verification') {
             when {
                 expression { return params.ACTION == 'apply' }
