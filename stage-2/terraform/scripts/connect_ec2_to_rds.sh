@@ -54,8 +54,10 @@ COMMAND_ID=$(aws ssm send-command --region "$AWS_REGION" \
   --parameters commands="[
     \"sed -i -E 's|^DB_HOST=.*|DB_HOST=${RDS_HOST}|' /opt/shopsphere/app/.env 2>/dev/null || echo 'DB_HOST=${RDS_HOST}' >> /opt/shopsphere/app/.env\",
     \"sed -i -E 's|^DB_PORT=.*|DB_PORT=${RDS_PORT}|' /opt/shopsphere/app/.env 2>/dev/null || echo 'DB_PORT=${RDS_PORT}' >> /opt/shopsphere/app/.env\",
+    \"grep -q '^PGSSLMODE=' /opt/shopsphere/app/.env || echo 'PGSSLMODE=no-verify' >> /opt/shopsphere/app/.env\",
     \"[ -f /opt/shopsphere/.env ] && sed -i -E 's|^DB_HOST=.*|DB_HOST=${RDS_HOST}|' /opt/shopsphere/.env || true\",
     \"[ -f /opt/shopsphere/.env ] && sed -i -E 's|^DB_PORT=.*|DB_PORT=${RDS_PORT}|' /opt/shopsphere/.env || true\",
+    \"[ -f /opt/shopsphere/.env ] && (grep -q '^PGSSLMODE=' /opt/shopsphere/.env || echo 'PGSSLMODE=no-verify' >> /opt/shopsphere/.env) || true\",
     \"if [ -f /opt/shopsphere/app/db/schema.sql ]; then PGPASSWORD=\$(grep -E '^DB_PASSWORD=' /opt/shopsphere/app/.env | cut -d= -f2-) psql -h '${RDS_HOST}' -p '${RDS_PORT}' -U shopsphere_user -d shopspheredb -f /opt/shopsphere/app/db/schema.sql || true; fi\",
     \"systemctl daemon-reload\",
     \"systemctl restart shopsphere || true\"
