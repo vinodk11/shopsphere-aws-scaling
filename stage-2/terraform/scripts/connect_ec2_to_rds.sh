@@ -6,7 +6,7 @@
 # ==============================================================================
 set -euo pipefail
 
-AWS_REGION="${AWS_REGION:-us-east-1}"
+AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
 PROJECT_NAME="${PROJECT_NAME:-shopsphere}"
 
 echo "======================================================================"
@@ -37,7 +37,7 @@ echo "✅ Resolved Amazon RDS Endpoint: ${RDS_HOST}:${RDS_PORT}"
 echo "[2/4] Discovering running Stage 1 EC2 instance..."
 EC2_ID=$(aws ec2 describe-instances --region "$AWS_REGION" \
   --filters "Name=tag:Name,Values=${PROJECT_NAME}-*-ec2" "Name=instance-state-name,Values=running" \
-  --query "Reservations[0].Instances[0].InstanceId" --output text)
+  --query "Reservations[].Instances[].InstanceId | [0]" --output text)
 
 if [ -z "${EC2_ID:-}" ] || [ "$EC2_ID" == "None" ]; then
   echo "❌ Error: Could not find running Stage 1 EC2 instance. Ensure Stage 1 is deployed."
@@ -46,14 +46,18 @@ fi
 echo "✅ Found Stage 1 EC2 Instance: ${EC2_ID}"
 
 # 3. Update EC2 Environment and Restart Application via AWS SSM
-echo "[3/4] Updating /opt/shopsphere/.env on EC2 instance via AWS SSM..."
+echo "[3/4] Updating /opt/shopsphere/app/.env on EC2 instance via AWS SSM..."
 COMMAND_ID=$(aws ssm send-command --region "$AWS_REGION" \
   --instance-ids "$EC2_ID" \
   --document-name "AWS-RunShellScript" \
   --comment "Reconfigure ShopSphere to use Amazon RDS" \
   --parameters commands="[
-    \"sed -i -E 's|^DB_HOST=.*|DB_HOST=${RDS_HOST}|' /opt/shopsphere/.env || echo 'DB_HOST=${RDS_HOST}' >> /opt/shopsphere/.env\",
-    \"sed -i -E 's|^DB_PORT=.*|DB_PORT=${RDS_PORT}|' /opt/shopsphere/.env || echo 'DB_PORT=${RDS_PORT}' >> /opt/shopsphere/.env\",
+    \"sed -i -E 's|^DB_HOST=.*|DB_HOST=${RDS_HOST}|' /opt/shopsphere/app/.env 2>/dev/null || echo 'DB_HOST=${RDS_HOST}' >> /opt/shopsphere/app/.env\",
+    \"sed -i -E 's|^DB_PORT=.*|DB_PORT=${RDS_PORT}|' /opt/shopsphere/app/.env 2>/dev/null || echo 'DB_PORT=${RDS_PORT}' >> /opt/shopsphere/app/.env\",
+    \"[ -f /opt/shopsphere/.env ] && sed -i -E 's|^DB_HOST=.*|DB_HOST=${RDS_HOST}|' /opt/shopsphere/.env || true\",
+    \"[ -f /opt/shopsphere/.env ] && sed -i -E 's|^DB_PORT=.*|DB_PORT=${RDS_PORT}|' /opt/shopsphere/.env || true\",
+    \"if [ -f /opt/shopsphere/app/db/schema.sql ]; then PGPASSWORD=\$(grep -E '^DB_PASSWORD=' /opt/shopsphere/app/.env | cut -d= -f2-) psql -h '${RDS_HOST}' -p '${RDS_PORT}' -U shopsphere_user -d shopspheredb -f /opt/shopsphere/app/db/schema.sql || true; fi\",
+    \"systemctl daemon-reload\",
     \"systemctl restart shopsphere || true\"
   ]" \
   --query "Command.CommandId" --output text)
@@ -63,7 +67,7 @@ aws ssm wait command-executed --region "$AWS_REGION" --command-id "$COMMAND_ID" 
 
 # 4. Verify Health Check
 EC2_PUBLIC_IP=$(aws ec2 describe-instances --region "$AWS_REGION" --instance-ids "$EC2_ID" \
-  --query "Reservations[0].Instances[0].PublicIpAddress" --output text)
+  --query "Reservations[].Instances[].PublicIpAddress | [0]" --output text)
 
 echo "[4/4] Probing application health at http://${EC2_PUBLIC_IP}/health ..."
 sleep 5

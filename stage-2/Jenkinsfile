@@ -140,7 +140,10 @@ pipeline {
             steps {
                 dir("${env.TF_DIR}") {
                     echo "🔗 Reconfiguring Stage 1 EC2 Monolith to connect to Stage 2 Amazon RDS..."
-                    sh './scripts/connect_ec2_to_rds.sh'
+                    sh '''
+                        chmod +x ./scripts/connect_ec2_to_rds.sh
+                        bash ./scripts/connect_ec2_to_rds.sh
+                    '''
                 }
             }
         }
