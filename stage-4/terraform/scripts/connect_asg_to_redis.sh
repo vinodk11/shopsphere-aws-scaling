@@ -69,11 +69,16 @@ for INSTANCE_ID in $INSTANCE_IDS; do
     --document-name "AWS-RunShellScript" \
     --comment "Reconfigure ShopSphere to use ElastiCache Redis" \
     --parameters commands="[
-      \"sed -i -E 's|^REDIS_HOST=.*|REDIS_HOST=${REDIS_HOST}|' /opt/shopsphere/.env 2>/dev/null || echo 'REDIS_HOST=${REDIS_HOST}' >> /opt/shopsphere/.env\",
-      \"sed -i -E 's|^REDIS_PORT=.*|REDIS_PORT=${REDIS_PORT}|' /opt/shopsphere/.env 2>/dev/null || echo 'REDIS_PORT=${REDIS_PORT}' >> /opt/shopsphere/.env\",
-      \"sed -i -E 's|^REDIS_TTL_SECONDS=.*|REDIS_TTL_SECONDS=60|' /opt/shopsphere/.env 2>/dev/null || echo 'REDIS_TTL_SECONDS=60' >> /opt/shopsphere/.env\",
-      \"sed -i -E 's|^STAGE_NAME=.*|STAGE_NAME=stage-4|' /opt/shopsphere/.env 2>/dev/null || true\",
-      \"if [ -f /opt/shopsphere/app/.env ]; then sed -i -E 's|^REDIS_HOST=.*|REDIS_HOST=${REDIS_HOST}|' /opt/shopsphere/app/.env; sed -i -E 's|^REDIS_PORT=.*|REDIS_PORT=${REDIS_PORT}|' /opt/shopsphere/app/.env; sed -i -E 's|^REDIS_TTL_SECONDS=.*|REDIS_TTL_SECONDS=60|' /opt/shopsphere/app/.env; sed -i -E 's|^STAGE_NAME=.*|STAGE_NAME=stage-4|' /opt/shopsphere/app/.env; fi\",
+      \"if [ -d /opt/shopsphere/repo/stage-4/app ]; then cp -r /opt/shopsphere/repo/stage-4/app/* /opt/shopsphere/app/; fi\",
+      \"cd /opt/shopsphere/app && npm install --silent || true\",
+      \"grep -q '^REDIS_HOST=' /opt/shopsphere/app/.env && sed -i -E 's|^REDIS_HOST=.*|REDIS_HOST=${REDIS_HOST}|' /opt/shopsphere/app/.env || echo 'REDIS_HOST=${REDIS_HOST}' >> /opt/shopsphere/app/.env\",
+      \"grep -q '^REDIS_PORT=' /opt/shopsphere/app/.env && sed -i -E 's|^REDIS_PORT=.*|REDIS_PORT=${REDIS_PORT}|' /opt/shopsphere/app/.env || echo 'REDIS_PORT=${REDIS_PORT}' >> /opt/shopsphere/app/.env\",
+      \"grep -q '^REDIS_TTL_SECONDS=' /opt/shopsphere/app/.env && sed -i -E 's|^REDIS_TTL_SECONDS=.*|REDIS_TTL_SECONDS=60|' /opt/shopsphere/app/.env || echo 'REDIS_TTL_SECONDS=60' >> /opt/shopsphere/app/.env\",
+      \"grep -q '^STAGE_NAME=' /opt/shopsphere/app/.env && sed -i -E 's|^STAGE_NAME=.*|STAGE_NAME=stage-4|' /opt/shopsphere/app/.env || echo 'STAGE_NAME=stage-4' >> /opt/shopsphere/app/.env\",
+      \"grep -q '^PGSSLMODE=' /opt/shopsphere/app/.env || echo 'PGSSLMODE=no-verify' >> /opt/shopsphere/app/.env\",
+      \"grep -q '^DB_SSL=' /opt/shopsphere/app/.env || echo 'DB_SSL=true' >> /opt/shopsphere/app/.env\",
+      \"chown -R shopsphere:shopsphere /opt/shopsphere\",
+      \"systemctl daemon-reload\",
       \"systemctl restart shopsphere || true\"
     ]" \
     --query "Command.CommandId" --output text 2>/dev/null || true)

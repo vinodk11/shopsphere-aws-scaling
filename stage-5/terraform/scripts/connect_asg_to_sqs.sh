@@ -83,11 +83,16 @@ for INSTANCE_ID in $INSTANCE_IDS; do
     --document-name "AWS-RunShellScript" \
     --comment "Reconfigure ShopSphere to use Amazon SQS" \
     --parameters commands="[
-      \"sed -i -E 's|^SQS_QUEUE_URL=.*|SQS_QUEUE_URL=${SQS_QUEUE_URL}|' /opt/shopsphere/.env 2>/dev/null || echo 'SQS_QUEUE_URL=${SQS_QUEUE_URL}' >> /opt/shopsphere/.env\",
-      \"sed -i -E 's|^SQS_QUEUE_NAME=.*|SQS_QUEUE_NAME=${SQS_QUEUE_NAME}|' /opt/shopsphere/.env 2>/dev/null || echo 'SQS_QUEUE_NAME=${SQS_QUEUE_NAME}' >> /opt/shopsphere/.env\",
-      \"sed -i -E 's|^STAGE_NAME=.*|STAGE_NAME=stage-5|' /opt/shopsphere/.env 2>/dev/null || true\",
-      \"sed -i -E 's|^ARCHITECTURE_TIER=.*|ARCHITECTURE_TIER=ALB-ASG-REDIS-SQS-LAMBDA-RDS|' /opt/shopsphere/.env 2>/dev/null || true\",
-      \"if [ -f /opt/shopsphere/app/.env ]; then sed -i -E 's|^SQS_QUEUE_URL=.*|SQS_QUEUE_URL=${SQS_QUEUE_URL}|' /opt/shopsphere/app/.env; sed -i -E 's|^SQS_QUEUE_NAME=.*|SQS_QUEUE_NAME=${SQS_QUEUE_NAME}|' /opt/shopsphere/app/.env; sed -i -E 's|^STAGE_NAME=.*|STAGE_NAME=stage-5|' /opt/shopsphere/app/.env; sed -i -E 's|^ARCHITECTURE_TIER=.*|ARCHITECTURE_TIER=ALB-ASG-REDIS-SQS-LAMBDA-RDS|' /opt/shopsphere/app/.env; fi\",
+      \"if [ -d /opt/shopsphere/repo/stage-5/app ]; then cp -r /opt/shopsphere/repo/stage-5/app/* /opt/shopsphere/app/; fi\",
+      \"cd /opt/shopsphere/app && npm install --silent || true\",
+      \"grep -q '^SQS_QUEUE_URL=' /opt/shopsphere/app/.env && sed -i -E 's|^SQS_QUEUE_URL=.*|SQS_QUEUE_URL=${SQS_QUEUE_URL}|' /opt/shopsphere/app/.env || echo 'SQS_QUEUE_URL=${SQS_QUEUE_URL}' >> /opt/shopsphere/app/.env\",
+      \"grep -q '^SQS_QUEUE_NAME=' /opt/shopsphere/app/.env && sed -i -E 's|^SQS_QUEUE_NAME=.*|SQS_QUEUE_NAME=${SQS_QUEUE_NAME}|' /opt/shopsphere/app/.env || echo 'SQS_QUEUE_NAME=${SQS_QUEUE_NAME}' >> /opt/shopsphere/app/.env\",
+      \"grep -q '^STAGE_NAME=' /opt/shopsphere/app/.env && sed -i -E 's|^STAGE_NAME=.*|STAGE_NAME=stage-5|' /opt/shopsphere/app/.env || echo 'STAGE_NAME=stage-5' >> /opt/shopsphere/app/.env\",
+      \"grep -q '^ARCHITECTURE_TIER=' /opt/shopsphere/app/.env && sed -i -E 's|^ARCHITECTURE_TIER=.*|ARCHITECTURE_TIER=ALB-ASG-REDIS-SQS-LAMBDA-RDS|' /opt/shopsphere/app/.env || echo 'ARCHITECTURE_TIER=ALB-ASG-REDIS-SQS-LAMBDA-RDS' >> /opt/shopsphere/app/.env\",
+      \"grep -q '^PGSSLMODE=' /opt/shopsphere/app/.env || echo 'PGSSLMODE=no-verify' >> /opt/shopsphere/app/.env\",
+      \"grep -q '^DB_SSL=' /opt/shopsphere/app/.env || echo 'DB_SSL=true' >> /opt/shopsphere/app/.env\",
+      \"chown -R shopsphere:shopsphere /opt/shopsphere\",
+      \"systemctl daemon-reload\",
       \"systemctl restart shopsphere || true\"
     ]" \
     --query "Command.CommandId" --output text 2>/dev/null || true)
