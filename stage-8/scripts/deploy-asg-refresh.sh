@@ -48,6 +48,12 @@ if [ -z "${ASG_NAME}" ] || [ "${ASG_NAME}" == "None" ]; then
 fi
 
 if [ -z "${ASG_NAME}" ] || [ "${ASG_NAME}" == "None" ]; then
+    # General fallback for any persistent shopsphere ASG
+    ASG_NAME=$(aws autoscaling describe-auto-scaling-groups --region "${AWS_REGION}" \
+        --query "AutoScalingGroups[?contains(AutoScalingGroupName, '${PROJECT_NAME}')].AutoScalingGroupName | [0]" --output text 2>/dev/null || echo "")
+fi
+
+if [ -z "${ASG_NAME}" ] || [ "${ASG_NAME}" == "None" ]; then
     echo -e "${RED}❌ Failed to find Auto Scaling Group for environment '${ENV_NAME}'.${NC}"
     exit 1
 fi
