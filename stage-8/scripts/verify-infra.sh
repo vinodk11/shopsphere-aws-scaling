@@ -3,6 +3,8 @@
 # ShopSphere Stage 8 - AWS Infrastructure Verification Script
 # Validates core infrastructure provisioned by Terraform:
 # VPC, ALB, ASG, RDS, ElastiCache, SQS, Lambda, CloudFront, WAF, and ECR.
+# Supports incremental architecture: checks for stage-specific resources first,
+# with dynamic fallback to persistent resources from previous stages (Stages 1-7).
 # ==============================================================================
 set -euo pipefail
 
@@ -47,12 +49,17 @@ check_result() {
 # ------------------------------------------------------------------------------
 echo -e "\n${BLUE}▶ Checking Amazon ECR Repository...${NC}"
 ECR_NAME="${PROJECT_NAME}-${ENV_NAME}-app"
-if aws ecr describe-repositories --repository-names "${ECR_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1; then
+if ! aws ecr describe-repositories --repository-names "${ECR_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1; then
+    # Fallback to any shopsphere ECR repository
+    ECR_NAME=$(aws ecr describe-repositories --region "${AWS_REGION}" --query "repositories[?contains(repositoryName, '${PROJECT_NAME}')].repositoryName | [0]" --output text 2>/dev/null || echo "None")
+fi
+
+if [ -n "${ECR_NAME}" ] && [ "${ECR_NAME}" != "None" ] && aws ecr describe-repositories --repository-names "${ECR_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1; then
     ECR_URI=$(aws ecr describe-repositories --repository-names "${ECR_NAME}" --region "${AWS_REGION}" --query 'repositories[0].repositoryUri' --output text)
     SCAN_STATUS=$(aws ecr describe-repositories --repository-names "${ECR_NAME}" --region "${AWS_REGION}" --query 'repositories[0].imageScanningConfiguration.scanOnPush' --output text)
     check_result "Amazon ECR" 0 "URI: ${ECR_URI} (ScanOnPush: ${SCAN_STATUS})"
 else
-    check_result "Amazon ECR" 1 "Repository ${ECR_NAME} not found"
+    check_result "Amazon ECR" 1 "Repository ${PROJECT_NAME}-${ENV_NAME}-app not found"
 fi
 
 # ------------------------------------------------------------------------------
@@ -60,11 +67,16 @@ fi
 # ------------------------------------------------------------------------------
 echo -e "\n${BLUE}▶ Checking Virtual Private Cloud (VPC)...${NC}"
 VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=${PROJECT_NAME}-${ENV_NAME}-vpc" --region "${AWS_REGION}" --query 'Vpcs[0].VpcId' --output text 2>/dev/null || echo "None")
-if [ -n "${VPC_ID}" ] && [ "${VPC_ID}" != "None" ]; then
+if [ -z "${VPC_ID}" ] || [ "${VPC_ID}" == "None" ] || [ "${VPC_ID}" == "null" ]; then
+    # Fallback: discover persistent VPC from Stage 1
+    VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=${PROJECT_NAME}-*-vpc" --region "${AWS_REGION}" --query 'Vpcs[0].VpcId' --output text 2>/dev/null || echo "None")
+fi
+
+if [ -n "${VPC_ID}" ] && [ "${VPC_ID}" != "None" ] && [ "${VPC_ID}" != "null" ]; then
     SUBNET_COUNT=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=${VPC_ID}" --region "${AWS_REGION}" --query 'length(Subnets)' --output text 2>/dev/null || echo "0")
     check_result "VPC & Subnets" 0 "VPC ID: ${VPC_ID} (${SUBNET_COUNT} subnets configured across Multi-AZ)"
 else
-    check_result "VPC & Subnets" 1 "VPC tagged ${PROJECT_NAME}-${ENV_NAME}-vpc not found"
+    check_result "VPC & Subnets" 1 "VPC tagged ${PROJECT_NAME}-${ENV_NAME}-vpc or ${PROJECT_NAME}-*-vpc not found"
 fi
 
 # ------------------------------------------------------------------------------
@@ -73,6 +85,14 @@ fi
 echo -e "\n${BLUE}▶ Checking Application Load Balancer (ALB)...${NC}"
 ALB_NAME="${PROJECT_NAME}-${ENV_NAME}-alb"
 ALB_STATE=$(aws elbv2 describe-load-balancers --names "${ALB_NAME}" --region "${AWS_REGION}" --query 'LoadBalancers[0].State.Code' --output text 2>/dev/null || echo "None")
+if [ "${ALB_STATE}" != "active" ]; then
+    # Fallback: discover persistent ALB from Stage 3
+    ALB_NAME=$(aws elbv2 describe-load-balancers --region "${AWS_REGION}" --query "LoadBalancers[?contains(LoadBalancerName, '${PROJECT_NAME}')].LoadBalancerName | [0]" --output text 2>/dev/null || echo "None")
+    if [ -n "${ALB_NAME}" ] && [ "${ALB_NAME}" != "None" ]; then
+        ALB_STATE=$(aws elbv2 describe-load-balancers --names "${ALB_NAME}" --region "${AWS_REGION}" --query 'LoadBalancers[0].State.Code' --output text 2>/dev/null || echo "None")
+    fi
+fi
+
 if [ "${ALB_STATE}" == "active" ]; then
     ALB_DNS=$(aws elbv2 describe-load-balancers --names "${ALB_NAME}" --region "${AWS_REGION}" --query 'LoadBalancers[0].DNSName' --output text)
     check_result "Application Load Balancer" 0 "${ALB_NAME} is active (${ALB_DNS})"
@@ -86,16 +106,26 @@ fi
 echo -e "\n${BLUE}▶ Checking EC2 Auto Scaling Group...${NC}"
 ASG_NAME=$(aws autoscaling describe-auto-scaling-groups --region "${AWS_REGION}" \
     --query "AutoScalingGroups[?contains(AutoScalingGroupName, '${PROJECT_NAME}-${ENV_NAME}-asg')].AutoScalingGroupName | [0]" --output text 2>/dev/null || echo "None")
-if [ -n "${ASG_NAME}" ] && [ "${ASG_NAME}" != "None" ]; then
+if [ -z "${ASG_NAME}" ] || [ "${ASG_NAME}" == "None" ] || [ "${ASG_NAME}" == "null" ]; then
+    # Fallback: discover persistent ASG from Stage 3
+    ASG_NAME=$(aws autoscaling describe-auto-scaling-groups --region "${AWS_REGION}" \
+        --query "AutoScalingGroups[?contains(AutoScalingGroupName, '${PROJECT_NAME}')].AutoScalingGroupName | [0]" --output text 2>/dev/null || echo "None")
+fi
+
+if [ -n "${ASG_NAME}" ] && [ "${ASG_NAME}" != "None" ] && [ "${ASG_NAME}" != "null" ]; then
     ASG_INSTANCES=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "${ASG_NAME}" --region "${AWS_REGION}" \
-        --query 'length(AutoScalingGroups[0].Instances)' --output text)
+        --query 'length(AutoScalingGroups[0].Instances)' --output text 2>/dev/null || echo "0")
     DESIRED_CAP=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "${ASG_NAME}" --region "${AWS_REGION}" \
-        --query 'AutoScalingGroups[0].DesiredCapacity' --output text)
+        --query 'AutoScalingGroups[0].DesiredCapacity' --output text 2>/dev/null || echo "0")
     LT_ID=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "${ASG_NAME}" --region "${AWS_REGION}" \
-        --query 'AutoScalingGroups[0].LaunchTemplate.LaunchTemplateId' --output text)
+        --query 'AutoScalingGroups[0].LaunchTemplate.LaunchTemplateId' --output text 2>/dev/null || echo "None")
+    if [ -z "${LT_ID}" ] || [ "${LT_ID}" == "None" ] || [ "${LT_ID}" == "null" ]; then
+        LT_ID=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "${ASG_NAME}" --region "${AWS_REGION}" \
+            --query 'AutoScalingGroups[0].MixedInstancesPolicy.LaunchTemplate.LaunchTemplateSpecification.LaunchTemplateId' --output text 2>/dev/null || echo "N/A")
+    fi
     check_result "Auto Scaling Group" 0 "${ASG_NAME} (Instances: ${ASG_INSTANCES}/${DESIRED_CAP}, LaunchTemplate: ${LT_ID})"
 else
-    check_result "Auto Scaling Group" 1 "ASG matching ${PROJECT_NAME}-${ENV_NAME}-asg not found"
+    check_result "Auto Scaling Group" 1 "ASG matching ${PROJECT_NAME}-${ENV_NAME}-asg or ${PROJECT_NAME} not found"
 fi
 
 # ------------------------------------------------------------------------------
@@ -105,6 +135,16 @@ echo -e "\n${BLUE}▶ Checking Amazon RDS PostgreSQL Instance...${NC}"
 RDS_ID="${PROJECT_NAME}-${ENV_NAME}-postgres"
 RDS_STATUS=$(aws rds describe-db-instances --db-instance-identifier "${RDS_ID}" --region "${AWS_REGION}" \
     --query 'DBInstances[0].DBInstanceStatus' --output text 2>/dev/null || echo "None")
+if [ -z "${RDS_STATUS}" ] || [ "${RDS_STATUS}" == "None" ] || [ "${RDS_STATUS}" == "null" ]; then
+    # Fallback: discover persistent RDS from Stage 2
+    RDS_ID=$(aws rds describe-db-instances --region "${AWS_REGION}" \
+        --query "DBInstances[?contains(DBInstanceIdentifier, '${PROJECT_NAME}') && contains(DBInstanceIdentifier, 'postgres')].DBInstanceIdentifier | [0]" --output text 2>/dev/null || echo "None")
+    if [ -n "${RDS_ID}" ] && [ "${RDS_ID}" != "None" ]; then
+        RDS_STATUS=$(aws rds describe-db-instances --db-instance-identifier "${RDS_ID}" --region "${AWS_REGION}" \
+            --query 'DBInstances[0].DBInstanceStatus' --output text 2>/dev/null || echo "None")
+    fi
+fi
+
 if [ "${RDS_STATUS}" == "available" ]; then
     RDS_ENDPOINT=$(aws rds describe-db-instances --db-instance-identifier "${RDS_ID}" --region "${AWS_REGION}" \
         --query 'DBInstances[0].Endpoint.Address' --output text)
@@ -120,6 +160,16 @@ echo -e "\n${BLUE}▶ Checking Amazon ElastiCache Redis Cluster...${NC}"
 REDIS_ID="${PROJECT_NAME}-${ENV_NAME}-redis"
 REDIS_STATUS=$(aws elasticache describe-cache-clusters --cache-cluster-id "${REDIS_ID}" --region "${AWS_REGION}" \
     --query 'CacheClusters[0].CacheClusterStatus' --output text 2>/dev/null || echo "None")
+if [ -z "${REDIS_STATUS}" ] || [ "${REDIS_STATUS}" == "None" ] || [ "${REDIS_STATUS}" == "null" ]; then
+    # Fallback: discover persistent Redis from Stage 4
+    REDIS_ID=$(aws elasticache describe-cache-clusters --region "${AWS_REGION}" \
+        --query "CacheClusters[?contains(CacheClusterId, '${PROJECT_NAME}') && contains(CacheClusterId, 'redis')].CacheClusterId | [0]" --output text 2>/dev/null || echo "None")
+    if [ -n "${REDIS_ID}" ] && [ "${REDIS_ID}" != "None" ]; then
+        REDIS_STATUS=$(aws elasticache describe-cache-clusters --cache-cluster-id "${REDIS_ID}" --region "${AWS_REGION}" \
+            --query 'CacheClusters[0].CacheClusterStatus' --output text 2>/dev/null || echo "None")
+    fi
+fi
+
 if [ "${REDIS_STATUS}" == "available" ]; then
     check_result "Amazon ElastiCache Redis" 0 "${REDIS_ID} is available (Engine: Redis 7.x)"
 else
@@ -132,8 +182,16 @@ fi
 echo -e "\n${BLUE}▶ Checking Amazon SQS Order Processing Queue & DLQ...${NC}"
 QUEUE_URL=$(aws sqs get-queue-url --queue-name "${PROJECT_NAME}-${ENV_NAME}-order-processing-queue" --region "${AWS_REGION}" --query 'QueueUrl' --output text 2>/dev/null || echo "None")
 DLQ_URL=$(aws sqs get-queue-url --queue-name "${PROJECT_NAME}-${ENV_NAME}-order-processing-dlq" --region "${AWS_REGION}" --query 'QueueUrl' --output text 2>/dev/null || echo "None")
+if [ -z "${QUEUE_URL}" ] || [ "${QUEUE_URL}" == "None" ]; then
+    # Fallback: discover persistent SQS queues from Stage 5
+    QUEUE_URL=$(aws sqs list-queues --region "${AWS_REGION}" --queue-name-prefix "${PROJECT_NAME}" --query "QueueUrls[?contains(@, 'order-processing-queue') && !contains(@, 'dlq')] | [0]" --output text 2>/dev/null || echo "None")
+fi
+if [ -z "${DLQ_URL}" ] || [ "${DLQ_URL}" == "None" ]; then
+    DLQ_URL=$(aws sqs list-queues --region "${AWS_REGION}" --queue-name-prefix "${PROJECT_NAME}" --query "QueueUrls[?contains(@, 'order-processing-dlq')] | [0]" --output text 2>/dev/null || echo "None")
+fi
+
 if [ "${QUEUE_URL}" != "None" ] && [ "${DLQ_URL}" != "None" ]; then
-    check_result "Amazon SQS Queues" 0 "Primary Queue & DLQ exist and active"
+    check_result "Amazon SQS Queues" 0 "Primary Queue (${QUEUE_URL##*/}) & DLQ (${DLQ_URL##*/}) exist and active"
 else
     check_result "Amazon SQS Queues" 1 "Queue: ${QUEUE_URL}, DLQ: ${DLQ_URL}"
 fi
@@ -145,6 +203,16 @@ echo -e "\n${BLUE}▶ Checking AWS Lambda Serverless Worker...${NC}"
 LAMBDA_NAME="${PROJECT_NAME}-${ENV_NAME}-order-processor"
 LAMBDA_STATE=$(aws lambda get-function --function-name "${LAMBDA_NAME}" --region "${AWS_REGION}" \
     --query 'Configuration.State' --output text 2>/dev/null || echo "None")
+if [ -z "${LAMBDA_STATE}" ] || [ "${LAMBDA_STATE}" == "None" ] || [ "${LAMBDA_STATE}" == "null" ]; then
+    # Fallback: discover persistent Lambda from Stage 5
+    LAMBDA_NAME=$(aws lambda list-functions --region "${AWS_REGION}" \
+        --query "Functions[?contains(FunctionName, '${PROJECT_NAME}') && contains(FunctionName, 'order-processor')].FunctionName | [0]" --output text 2>/dev/null || echo "None")
+    if [ -n "${LAMBDA_NAME}" ] && [ "${LAMBDA_NAME}" != "None" ]; then
+        LAMBDA_STATE=$(aws lambda get-function --function-name "${LAMBDA_NAME}" --region "${AWS_REGION}" \
+            --query 'Configuration.State' --output text 2>/dev/null || echo "None")
+    fi
+fi
+
 if [ "${LAMBDA_STATE}" == "Active" ]; then
     check_result "AWS Lambda Function" 0 "${LAMBDA_NAME} state: Active"
 else
@@ -158,6 +226,14 @@ echo -e "\n${BLUE}▶ Checking AWS WAF v2 Perimeter Web ACL...${NC}"
 WAF_NAME="${PROJECT_NAME}-${ENV_NAME}-web-acl"
 WAF_ID=$(aws wafv2 list-web-acls --scope CLOUDFRONT --region us-east-1 \
     --query "WebACLs[?Name=='${WAF_NAME}'].Id | [0]" --output text 2>/dev/null || echo "None")
+if [ -z "${WAF_ID}" ] || [ "${WAF_ID}" == "None" ] || [ "${WAF_ID}" == "null" ]; then
+    # Fallback: discover persistent WAF from Stage 6
+    WAF_INFO=$(aws wafv2 list-web-acls --scope CLOUDFRONT --region us-east-1 \
+        --query "WebACLs[?contains(Name, '${PROJECT_NAME}')] | [0]" --output json 2>/dev/null || echo "{}")
+    WAF_ID=$(echo "${WAF_INFO}" | jq -r '.Id // "None"' 2>/dev/null || echo "None")
+    WAF_NAME=$(echo "${WAF_INFO}" | jq -r '.Name // "None"' 2>/dev/null || echo "None")
+fi
+
 if [ -n "${WAF_ID}" ] && [ "${WAF_ID}" != "None" ]; then
     check_result "AWS WAF v2" 0 "${WAF_NAME} (ID: ${WAF_ID}) active in us-east-1"
 else

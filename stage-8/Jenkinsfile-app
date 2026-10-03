@@ -299,7 +299,7 @@ pipeline {
                 echo "🚀 [9/12: ASG Rollout] Executing rolling instance refresh on Auto Scaling Group..."
                 sh """
                     chmod +x stage-8/scripts/deploy-asg-refresh.sh
-                    ./stage-8/scripts/deploy-asg-refresh.sh "${env.RELEASE_TAG}" "${params.ENVIRONMENT}"
+                    bash stage-8/scripts/deploy-asg-refresh.sh "${env.RELEASE_TAG}" "${params.ENVIRONMENT}"
                 """
             }
         }

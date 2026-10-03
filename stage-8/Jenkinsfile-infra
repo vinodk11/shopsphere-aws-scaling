@@ -280,7 +280,7 @@ pipeline {
                 echo "🧪 [9/9: Verification] Validating provisioned AWS infrastructure resources..."
                 sh """
                     chmod +x stage-8/scripts/verify-infra.sh
-                    ./stage-8/scripts/verify-infra.sh "${params.ENVIRONMENT}" "${env.TF_DIR}/infra-manifest.json"
+                    bash stage-8/scripts/verify-infra.sh "${params.ENVIRONMENT}" "${env.TF_DIR}/infra-manifest.json"
                 """
             }
         }
