@@ -82,6 +82,7 @@ DB_NAME=${db_name}
 DB_USER=${db_user}
 DB_PASSWORD=${db_password}
 DB_SSL=true
+PGSSLMODE=no-verify
 ENV_EOF
 
 chmod 600 /opt/shopsphere/app/.env

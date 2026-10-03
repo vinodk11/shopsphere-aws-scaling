@@ -86,6 +86,7 @@ DB_NAME=${db_name}
 DB_USER=${db_user}
 DB_PASSWORD=${db_password}
 DB_SSL=true
+PGSSLMODE=no-verify
 STAGE_NAME=stage-3
 ENV_EOF
 

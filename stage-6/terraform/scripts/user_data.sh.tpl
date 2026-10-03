@@ -90,6 +90,7 @@ DB_NAME=${db_name}
 DB_USER=${db_user}
 DB_PASSWORD=${db_password}
 DB_SSL=true
+PGSSLMODE=no-verify
 REDIS_HOST=${redis_host}
 REDIS_PORT=${redis_port}
 REDIS_TTL_SECONDS=60
