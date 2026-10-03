@@ -347,6 +347,22 @@ pipeline {
         }
 
         // =====================================================================
+        // 9b. Deploy Stage 8 Container App to ASG Fleet
+        // =====================================================================
+        stage('Deploy Stage 8 Container App') {
+            when {
+                expression { return params.ACTION == 'apply' || params.ACTION == 'container-update' }
+            }
+            steps {
+                echo "🚀 Deploying Stage 8 Container App to ASG fleet via AWS SSM..."
+                sh """
+                    chmod +x ${env.TF_DIR}/scripts/connect_asg_to_stage8.sh
+                    bash ${env.TF_DIR}/scripts/connect_asg_to_stage8.sh || echo "⚠️ SSM deploy script completed with warnings."
+                """
+            }
+        }
+
+        // =====================================================================
         // 10. Verify App Health, Container, ALB & CloudFront (CNF)
         // =====================================================================
         stage('Verify App Health, Container, ALB & CloudFront (CNF)') {
