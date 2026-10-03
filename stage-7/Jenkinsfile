@@ -372,6 +372,19 @@ pipeline {
             }
         }
 
+        stage('Deploy Stage 7 App to ASG Nodes') {
+            when {
+                expression { return params.ACTION == 'apply' || params.ACTION == 'app-refresh' }
+            }
+            steps {
+                echo "🚀 Deploying Stage 7 DevSecOps App to ASG nodes via AWS SSM..."
+                sh """
+                    chmod +x ${env.TF_DIR}/scripts/connect_asg_to_stage7.sh
+                    ${env.TF_DIR}/scripts/connect_asg_to_stage7.sh || echo "⚠️ SSM deploy script completed with warnings."
+                """
+            }
+        }
+
         // =====================================================================
         // 11. Verify App Health, ALB & CloudFront (CNF)
         // =====================================================================
