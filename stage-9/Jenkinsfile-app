@@ -11,7 +11,7 @@ pipeline {
     booleanParam(name: 'ENABLE_ORDER_PATH', defaultValue: true, description: 'Enable /api/orders* ALB rule through the infrastructure pipeline.')
     booleanParam(name: 'ENABLE_USER_PATH', defaultValue: true, description: 'Enable /api/users* ALB rule through the infrastructure pipeline.')
     booleanParam(name: 'RUN_DAST', defaultValue: true, description: 'Run ZAP baseline after deployment.')
-    string(name: 'DAST_URL', defaultValue: 'https://d33f8dq17c8295.cloudfront.net', description: 'Application URL used by the DAST stage.')
+    string(name: 'DAST_URL', defaultValue: 'https://d2kl5ria2wure0.cloudfront.net', description: 'Application URL used by the DAST stage.')
   }
 
   environment {
@@ -275,8 +275,9 @@ pipeline {
       steps {
         script {
           def targetUrl = params.DAST_URL
-          if (!targetUrl || targetUrl.contains('REPLACE_WITH_STAGE9_URL')) {
-            targetUrl = 'https://d33f8dq17c8295.cloudfront.net'
+          if (!targetUrl || targetUrl.contains('REPLACE_WITH_STAGE9_URL') || targetUrl.contains('d33f8dq17c8295')) {
+            def discovered = sh(script: "aws cloudfront list-distributions --query \"DistributionList.Items[?contains(Comment, 'ShopSphere')].DomainName | [0]\" --output text 2>/dev/null || echo ''", returnStdout: true).trim()
+            targetUrl = (discovered && discovered != 'None' && discovered != '') ? "https://${discovered}" : 'https://d2kl5ria2wure0.cloudfront.net'
           }
           sh """
             docker run --rm -v \$(pwd):/zap/wrk zaproxy/zap-stable:2.16.1 \\
