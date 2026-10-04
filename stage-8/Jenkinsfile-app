@@ -279,11 +279,15 @@ pipeline {
                         docker tag shopsphere-app:${env.RELEASE_TAG} "${env.ECR_REPOSITORY_URL}:${env.RELEASE_TAG}"
                         docker tag shopsphere-app:${env.RELEASE_TAG} "${env.ECR_REPOSITORY_URL}:build-${env.BUILD_NUMBER}"
                         docker tag shopsphere-app:${env.RELEASE_TAG} "${env.ECR_REPOSITORY_URL}:${env.GIT_COMMIT_SHORT}"
+                        docker tag shopsphere-app:${env.RELEASE_TAG} "${env.ECR_REPOSITORY_URL}:latest"
+                        docker tag shopsphere-app:${env.RELEASE_TAG} "${env.ECR_REPOSITORY_URL}:8.0.0"
 
-                        echo "Pushing immutable image tags to Amazon ECR..."
+                        echo "Pushing immutable and standard image tags to Amazon ECR..."
                         docker push "${env.ECR_REPOSITORY_URL}:${env.RELEASE_TAG}"
                         docker push "${env.ECR_REPOSITORY_URL}:build-${env.BUILD_NUMBER}"
                         docker push "${env.ECR_REPOSITORY_URL}:${env.GIT_COMMIT_SHORT}"
+                        docker push "${env.ECR_REPOSITORY_URL}:latest"
+                        docker push "${env.ECR_REPOSITORY_URL}:8.0.0"
 
                         echo "✅ Pushed: ${env.ECR_REPOSITORY_URL}:${env.RELEASE_TAG}"
                     """
@@ -320,6 +324,15 @@ pipeline {
                         returnStdout: true
                     ).trim()
 
+                    def cfDistId = sh(
+                        script: """
+                            aws cloudfront list-distributions \
+                                --query "DistributionList.Items[?contains(Comment, 'ShopSphere')].Id | [0]" \
+                                --output text 2>/dev/null || echo ""
+                        """,
+                        returnStdout: true
+                    ).trim()
+
                     if (!cfDomain || cfDomain == 'None') {
                         error("Unable to discover CloudFront distribution domain.")
                     }
@@ -328,6 +341,13 @@ pipeline {
                     echo "Testing live edge endpoint: ${env.TARGET_URL}"
 
                     sh """
+                        echo "Flushing CloudFront edge cache to ensure latest deployment is served..."
+                        if [ -n "${cfDistId}" ] && [ "${cfDistId}" != "None" ]; then
+                            aws cloudfront create-invalidation \
+                                --distribution-id "${cfDistId}" \
+                                --paths "/*" || true
+                        fi
+
                         echo "Waiting 15s for CloudFront edge synchronization..."
                         sleep 15
 
@@ -340,6 +360,15 @@ pipeline {
                         if [ "\${STATUS}" != "UP" ]; then
                             echo "❌ Health check returned non-UP status: \${STATUS}"
                             exit 1
+                        fi
+
+                        echo "Verifying Stage 8 container deployment..."
+                        if ! echo "\${HEALTH_RES}" | grep -qi "Stage 8"; then
+                            echo "⚠️ Edge did not return Stage 8. Dispatching immediate SSM container configuration..."
+                            bash stage-8/terraform/scripts/connect_asg_to_stage8.sh "${env.RELEASE_TAG}" || true
+                            sleep 10
+                            HEALTH_RES=\$(curl -s -f --max-time 15 "${env.TARGET_URL}/health")
+                            echo "Re-probed health: \${HEALTH_RES}"
                         fi
 
                         echo "Testing /api/products catalog endpoint..."

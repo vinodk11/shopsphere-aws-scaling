@@ -7,13 +7,15 @@ set -euo pipefail
 
 AWS_REGION="${AWS_REGION:-us-east-1}"
 PROJECT_NAME="${PROJECT_NAME:-shopsphere}"
+IMAGE_TAG="${1:-8.0.0}"
 
 echo "======================================================================"
 echo "  ShopSphere Stage 8: Deploying Docker Containerized Application"
+echo "  Target Image Tag: ${IMAGE_TAG}"
 echo "======================================================================"
 
 CF_DOMAIN=$(aws cloudfront list-distributions --region "$AWS_REGION" \
-  --query "DistributionList.Items[?contains(Comment, 'ShopSphere')].DomainName | [0]" --output text 2>/dev/null || echo "d1vnvgpxbovxo4.cloudfront.net")
+  --query "DistributionList.Items[?contains(Comment, 'ShopSphere')].DomainName | [0]" --output text 2>/dev/null || echo "d2kl5ria2wure0.cloudfront.net")
 
 ECR_URI=$(aws ecr describe-repositories --region "$AWS_REGION" \
   --query "repositories[?contains(repositoryName, '${PROJECT_NAME}')].repositoryUri | [0]" --output text 2>/dev/null || echo "165772574557.dkr.ecr.us-east-1.amazonaws.com/shopsphere-stage8-app")
@@ -67,15 +69,16 @@ CLOUDFRONT_DOMAIN=${CF_DOMAIN}
 DOCKER_CONTAINER=true
 ARCHITECTURE_TIER=CONTAINER-DOCKER-ECR-ASG-CLOUDFRONT-WAF-ALB-REDIS-SQS-LAMBDA-RDS
 ECR_REPOSITORY_URL=${ECR_URI}
-IMAGE_TAG=8.0.0
+IMAGE_TAG=${IMAGE_TAG}
 ENV_EOF\",
       \"chmod 600 /opt/shopsphere/app/.env\",
       \"systemctl stop shopsphere || true\",
       \"systemctl disable shopsphere || true\",
       \"aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_URI%%/*} || true\",
-      \"if ! docker pull ${ECR_URI}:8.0.0; then docker build -t shopsphere-app:8.0.0 /opt/shopsphere/repo/stage-8/app && docker tag shopsphere-app:8.0.0 ${ECR_URI}:8.0.0; fi\",
+      \"if ! docker pull ${ECR_URI}:${IMAGE_TAG}; then docker pull ${ECR_URI}:latest || docker pull ${ECR_URI}:8.0.0 || (docker build -t shopsphere-app:${IMAGE_TAG} /opt/shopsphere/repo/stage-8/app && docker tag shopsphere-app:${IMAGE_TAG} ${ECR_URI}:${IMAGE_TAG}); fi\",
+      \"TARGET_IMG=\$(docker images --format '{{.Repository}}:{{.Tag}}' | grep -E '(${IMAGE_TAG}|8.0.0|latest)' | head -n1 || echo '${ECR_URI}:8.0.0')\",
       \"docker rm -f shopsphere-app-prod 2>/dev/null || true\",
-      \"docker run -d --name shopsphere-app-prod --restart always -p 127.0.0.1:8080:8080 --env-file /opt/shopsphere/app/.env ${ECR_URI}:8.0.0\",
+      \"docker run -d --name shopsphere-app-prod --restart always -p 127.0.0.1:8080:8080 --env-file /opt/shopsphere/app/.env \${TARGET_IMG}\",
       \"systemctl reload nginx || systemctl restart nginx\",
       \"sleep 3\",
       \"curl -s http://127.0.0.1:8080/health || true\"

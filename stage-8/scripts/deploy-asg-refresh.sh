@@ -98,9 +98,36 @@ DECODED_USER_DATA=$(echo "${CURRENT_USER_DATA_B64}" | base64 -d)
 TAG_OVERRIDE_LINE="echo \"${IMAGE_TAG}\" > /opt/shopsphere/image_tag"
 if echo "${DECODED_USER_DATA}" | grep -q "/opt/shopsphere/image_tag"; then
     MODIFIED_USER_DATA=$(echo "${DECODED_USER_DATA}" | sed "s|echo .* > /opt/shopsphere/image_tag|${TAG_OVERRIDE_LINE}|")
-else
-    # Append before the deployment script execution
+elif echo "${DECODED_USER_DATA}" | grep -q "/opt/shopsphere/deploy.sh"; then
     MODIFIED_USER_DATA=$(echo "${DECODED_USER_DATA}" | sed "s|/opt/shopsphere/deploy.sh|${TAG_OVERRIDE_LINE}\n/opt/shopsphere/deploy.sh \"${IMAGE_TAG}\"|")
+else
+    echo -e "${YELLOW}⚠️ Detected legacy or non-container user data. Upgrading Launch Template to Stage 8 Docker Containerization...${NC}"
+    DB_HOST=$(aws rds describe-db-instances --region "${AWS_REGION}" --query "DBInstances[?contains(DBInstanceIdentifier, '${PROJECT_NAME}')].Endpoint.Address | [0]" --output text 2>/dev/null || echo "shopsphere-stage2-postgres.cy9mak0su1oj.us-east-1.rds.amazonaws.com")
+    REDIS_HOST=$(aws elasticache describe-cache-clusters --region "${AWS_REGION}" --query "CacheClusters[?contains(CacheClusterId, '${PROJECT_NAME}')].CacheClusterId | [0]" --output text 2>/dev/null || echo "shopsphere-stage4-redis")
+    REDIS_ENDPOINT=$(aws elasticache describe-cache-clusters --cache-cluster-id "${REDIS_HOST}" --show-cache-node-info --region "${AWS_REGION}" --query "CacheClusters[0].CacheNodes[0].Endpoint.Address" --output text 2>/dev/null || echo "shopsphere-stage4-redis.ekxmke.0001.use1.cache.amazonaws.com")
+    SQS_URL=$(aws sqs list-queues --region "${AWS_REGION}" --queue-name-prefix "${PROJECT_NAME}" --query "QueueUrls[?contains(@, 'order-processing-queue') && !contains(@, 'dlq')] | [0]" --output text 2>/dev/null || echo "https://sqs.us-east-1.amazonaws.com/165772574557/shopsphere-stage5-order-processing-queue")
+    ECR_URL=$(aws ecr describe-repositories --region "${AWS_REGION}" --query "repositories[?contains(repositoryName, '${PROJECT_NAME}')].repositoryUri | [0]" --output text 2>/dev/null || echo "165772574557.dkr.ecr.us-east-1.amazonaws.com/shopsphere-stage8-app")
+
+    if [ -f "stage-8/terraform/scripts/user_data.sh.tpl" ]; then
+        MODIFIED_USER_DATA=$(sed \
+            -e "s|\${db_host}|${DB_HOST}|g" \
+            -e "s|\${db_port}|5432|g" \
+            -e "s|\${db_name}|shopspheredb|g" \
+            -e "s|\${db_user}|shopsphere_user|g" \
+            -e "s|\${db_password}|ShopSphere2026SecurePass!|g" \
+            -e "s|\${aws_region}|${AWS_REGION}|g" \
+            -e "s|\${redis_host}|${REDIS_ENDPOINT}|g" \
+            -e "s|\${redis_port}|6379|g" \
+            -e "s|\${sqs_queue_url}|${SQS_URL}|g" \
+            -e "s|\${sqs_queue_name}|shopsphere-stage5-order-processing-queue|g" \
+            -e "s|\${ecr_repository_url}|${ECR_URL}|g" \
+            -e "s|\${app_repo_url}|https://github.com/vinodk11/shopsphere-aws-scaling.git|g" \
+            -e "s|\${app_port}|8080|g" \
+            -e "s|\$\${|\${|g" \
+            stage-8/terraform/scripts/user_data.sh.tpl)
+        MODIFIED_USER_DATA=$(echo "${MODIFIED_USER_DATA}" | sed "s|IMAGE_NAME=\"shopsphere-app:8.0.0\"|IMAGE_NAME=\"shopsphere-app:${IMAGE_TAG}\"|")
+        MODIFIED_USER_DATA=$(echo "${MODIFIED_USER_DATA}" | sed "s|/opt/shopsphere/deploy.sh|${TAG_OVERRIDE_LINE}\n/opt/shopsphere/deploy.sh \"${IMAGE_TAG}\"|")
+    fi
 fi
 
 NEW_USER_DATA_B64=$(echo "${MODIFIED_USER_DATA}" | base64 -w 0)
@@ -116,6 +143,12 @@ NEW_VERSION=$(aws ec2 create-launch-template-version \
 
 echo -e "${GREEN}Created new Launch Template version: ${NEW_VERSION}${NC}"
 
+# Set default version on launch template
+aws ec2 modify-launch-template \
+    --launch-template-id "${LT_ID}" \
+    --default-version "${NEW_VERSION}" \
+    --region "${AWS_REGION}" >/dev/null 2>&1 || true
+
 # ------------------------------------------------------------------------------
 # 4. Update ASG to Use $Latest Launch Template Version
 # ------------------------------------------------------------------------------
@@ -126,6 +159,12 @@ aws autoscaling update-auto-scaling-group \
     --region "${AWS_REGION}"
 
 echo -e "${GREEN}Auto Scaling Group updated successfully.${NC}"
+
+# Deploy immediately to current running instances via SSM
+if [ -f "stage-8/terraform/scripts/connect_asg_to_stage8.sh" ]; then
+    echo -e "\n${BLUE}▶ Dispatched immediate Stage 8 container deployment via SSM to active ASG instances...${NC}"
+    bash stage-8/terraform/scripts/connect_asg_to_stage8.sh "${IMAGE_TAG}" || true
+fi
 
 # ------------------------------------------------------------------------------
 # 5. Initiate & Monitor ASG Rolling Instance Refresh
@@ -174,6 +213,11 @@ while true; do
         "Successful")
             echo -e "\n${GREEN}🎉 ASG Instance Refresh completed successfully!${NC}"
             echo "All instances are running immutable release: ${IMAGE_TAG}"
+            CF_DIST_ID=$(aws cloudfront list-distributions --region "${AWS_REGION}" --query "DistributionList.Items[?contains(Comment, '${PROJECT_NAME}')].Id | [0]" --output text 2>/dev/null || true)
+            if [ -n "${CF_DIST_ID:-}" ] && [ "${CF_DIST_ID}" != "None" ]; then
+                echo "Invalidating CloudFront cache for distribution: ${CF_DIST_ID}..."
+                aws cloudfront create-invalidation --distribution-id "${CF_DIST_ID}" --paths "/*" --region "${AWS_REGION}" >/dev/null 2>&1 || true
+            fi
             exit 0
             ;;
         "Failed")

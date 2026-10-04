@@ -22,6 +22,10 @@ dnf install -y docker git postgresql15 nginx amazon-ssm-agent || dnf install -y 
 systemctl enable --now docker
 systemctl enable --now amazon-ssm-agent || true
 
+# Disable legacy host-level shopsphere service to prevent port conflicts with Docker
+systemctl stop shopsphere 2>/dev/null || true
+systemctl disable shopsphere 2>/dev/null || true
+
 # Add standard users to docker group
 usermod -aG docker ec2-user || true
 
