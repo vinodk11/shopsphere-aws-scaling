@@ -120,6 +120,101 @@
           </div>
         </div>
       </div>
+
+      <!-- Stage 9 Progressive Blue/Green Traffic Migration Visualizer -->
+      <div class="event-pipeline-card" style="border-color: #6366f1; background: linear-gradient(180deg, #1e1b4b 0%, #0f172a 100%);">
+        <div class="event-pipeline-header">
+          <div class="event-pipeline-title">
+            <span style="font-size: 1.3rem;">🔀</span>
+            <span>Progressive Blue/Green Traffic Migration Controller</span>
+            <span class="badge" id="activeWeightBadge" style="background: #10b981; font-size: 0.75rem;">LIVE: 0% Blue / 100% Green</span>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <span style="font-size: 0.8rem; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">ALB Priority 9 Weighted Rule</span>
+          </div>
+        </div>
+
+        <!-- 5 Milestones Selector Tabs -->
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.25rem; justify-content: center;">
+          <button class="btn btn-secondary btn-sm milestone-btn" onclick="selectMilestone('100-0', 100, 0)" id="btn-100-0">
+            <span>100 - 0 (Baseline)</span>
+          </button>
+          <button class="btn btn-secondary btn-sm milestone-btn" onclick="selectMilestone('90-10', 90, 10)" id="btn-90-10">
+            <span>90 - 10 (Canary)</span>
+          </button>
+          <button class="btn btn-secondary btn-sm milestone-btn" onclick="selectMilestone('75-25', 75, 25)" id="btn-75-25">
+            <span>75 - 25 (Early Adopters)</span>
+          </button>
+          <button class="btn btn-secondary btn-sm milestone-btn" onclick="selectMilestone('50-50', 50, 50)" id="btn-50-50">
+            <span>50 - 50 (Balanced)</span>
+          </button>
+          <button class="btn btn-secondary btn-sm milestone-btn active" onclick="selectMilestone('0-100', 0, 100)" id="btn-0-100" style="border-color: #10b981; color: #10b981; font-weight: 700;">
+            <span>0 - 100 (Full EKS Cutover 🎉)</span>
+          </button>
+        </div>
+
+        <!-- Two-Tone Split Percentage Bar -->
+        <div style="margin-bottom: 1.5rem; background: #0f172a; padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color);">
+          <div style="display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 700; margin-bottom: 0.5rem;">
+            <span style="color: #60a5fa;" id="bluePercentText">🟦 Stage 8 ASG Monolith: 0%</span>
+            <span style="color: #34d399;" id="greenPercentText">🟩 Stage 9 EKS Microservices: 100%</span>
+          </div>
+          <div style="display: flex; height: 26px; border-radius: 9999px; overflow: hidden; background: #1e293b; border: 1px solid #334155;">
+            <div id="blueSplitBar" style="width: 0%; background: linear-gradient(90deg, #1d4ed8, #3b82f6); transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1); display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 800; color: #fff; overflow: hidden; white-space: nowrap;"></div>
+            <div id="greenSplitBar" style="width: 100%; background: linear-gradient(90deg, #059669, #10b981); transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1); display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 800; color: #fff; overflow: hidden; white-space: nowrap;">100% EKS</div>
+          </div>
+        </div>
+
+        <!-- Architecture Flow Diagram Split -->
+        <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 1rem; align-items: center; background: #0b1120; border-radius: 8px; padding: 1.25rem; border: 1px solid #1e293b; margin-bottom: 1.25rem;">
+          <!-- Left: Ingress & ALB -->
+          <div style="display: flex; flex-direction: column; gap: 0.75rem; align-items: center; text-align: center;">
+            <div style="background: #1e293b; border: 1px solid #6366f1; border-radius: 8px; padding: 0.75rem 1rem; width: 100%;">
+              <div style="font-size: 1.1rem; margin-bottom: 0.25rem;">🌐 CloudFront CDN</div>
+              <div style="font-size: 0.75rem; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">X-ShopSphere-Origin-Verify</div>
+            </div>
+            <div style="color: var(--text-muted); font-size: 1.2rem;">⬇️</div>
+            <div style="background: #1e293b; border: 1px solid #10b981; border-radius: 8px; padding: 0.75rem 1rem; width: 100%;">
+              <div style="font-size: 1rem; font-weight: 700;">⚖️ AWS ALB (Priority 9)</div>
+              <div style="font-size: 0.75rem; color: #a7f3d0;">Weighted Target Groups</div>
+            </div>
+          </div>
+
+          <!-- Middle: Splitting Arrows -->
+          <div style="display: flex; flex-direction: column; justify-content: space-around; height: 100%; font-size: 1.5rem; color: var(--text-muted); padding: 0 0.5rem;">
+            <div id="blueArrow" style="opacity: 0.2; transition: opacity 0.4s;">↗️</div>
+            <div id="greenArrow" style="opacity: 1; transition: opacity 0.4s;">↘️</div>
+          </div>
+
+          <!-- Right: Two Target Group Branches -->
+          <div style="display: flex; flex-direction: column; gap: 1rem;">
+            <!-- Blue Branch -->
+            <div id="blueBranchCard" style="background: #1e293b; border: 2px solid #3b82f6; border-radius: 8px; padding: 0.75rem 1rem; opacity: 0.35; transition: all 0.4s;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-weight: 700; color: #60a5fa;">🟦 Blue: Stage 8 ASG Monolith</span>
+                <span class="badge" id="blueBadge" style="background: #1e40af;">Weight: 0</span>
+              </div>
+              <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Target Group: shopsphere-stage3-tg (EC2 ASG Nodes)</div>
+              <div style="font-size: 0.75rem; color: #93c5fd; margin-top: 0.25rem; font-family: 'JetBrains Mono', monospace;" id="blueStatusText">0% of catch-all requests (Bypassed)</div>
+            </div>
+
+            <!-- Green Branch -->
+            <div id="greenBranchCard" style="background: #1e293b; border: 2px solid #10b981; border-radius: 8px; padding: 0.75rem 1rem; opacity: 1; box-shadow: 0 0 15px rgba(16, 185, 129, 0.4); transition: all 0.4s;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-weight: 700; color: #34d399;">🟩 Green: Stage 9 EKS Frontend</span>
+                <span class="badge" id="greenBadge" style="background: #059669;">Weight: 100</span>
+              </div>
+              <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Target Group: shopsphere-stage9-eks-mono-tg (Port 30080)</div>
+              <div style="font-size: 0.75rem; color: #6ee7b7; margin-top: 0.25rem; font-family: 'JetBrains Mono', monospace;" id="greenStatusText">100% of catch-all requests (Full EKS Cutover 🎉)</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Description Banner for Selected Phase -->
+        <div id="phaseExplanation" style="background: rgba(16, 185, 129, 0.1); border: 1px solid #059669; border-radius: 6px; padding: 0.75rem 1rem; font-size: 0.85rem; color: #a7f3d0;">
+          <strong>Milestone 5 (0 - 100) — Full EKS Cutover:</strong> 100% of catch-all user traffic is routed to Stage 9 EKS Frontend Service. All API routes (/api/products*, /api/orders*, /api/users*) are served autonomously by dedicated EKS backend microservices. The legacy Stage 8 EC2 monolith is completely bypassed.
+        </div>
+      </div>
     </div>
   </section>
 
@@ -259,6 +354,101 @@
   <script>
     let cart = [];
     let currentUser = null;
+
+    const MILESTONES = {
+      '100-0': {
+        blue: 100,
+        green: 0,
+        title: 'Milestone 1 (100 - 0) — Baseline (Stage 8 Monolith):',
+        desc: '100% of catch-all user traffic is routed to the Stage 8 Docker container on EC2 ASG. Stage 9 EKS microservices are running in standby receiving 0% frontend traffic.',
+        blueStatus: '100% of catch-all requests (All users on EC2)',
+        greenStatus: '0% of catch-all requests (Standby)'
+      },
+      '90-10': {
+        blue: 90,
+        green: 10,
+        title: 'Milestone 2 (90 - 10) — Canary Testing Phase:',
+        desc: '10% canary traffic is shifted to Stage 9 EKS Frontend pods. 90% stays on the stable Stage 8 baseline. Used to verify cluster health and error rates with minimal impact.',
+        blueStatus: '90% of catch-all requests',
+        greenStatus: '10% of catch-all requests (Canary)'
+      },
+      '75-25': {
+        blue: 75,
+        green: 25,
+        title: 'Milestone 3 (75 - 25) — Early Adopter Phase:',
+        desc: '25% of traffic is routed to EKS. Microservice latency, caching hit ratio on ElastiCache Redis, and SQS order queue throughput are measured under live user traffic.',
+        blueStatus: '75% of catch-all requests',
+        greenStatus: '25% of catch-all requests'
+      },
+      '50-50': {
+        blue: 50,
+        green: 50,
+        title: 'Milestone 4 (50 - 50) — Balanced Load Migration:',
+        desc: 'Equal 50/50 distribution across legacy EC2 ASG Monolith and Kubernetes EKS pods. Both infrastructures handle equal load simultaneously.',
+        blueStatus: '50% of catch-all requests',
+        greenStatus: '50% of catch-all requests'
+      },
+      '0-100': {
+        blue: 0,
+        green: 100,
+        title: 'Milestone 5 (0 - 100) — Full EKS Cutover:',
+        desc: '100% of catch-all user traffic is routed to Stage 9 EKS Frontend Service. All API routes (/api/products*, /api/orders*, /api/users*) are served autonomously by dedicated EKS backend microservices. The legacy Stage 8 EC2 monolith is completely bypassed.',
+        blueStatus: '0% of catch-all requests (Bypassed)',
+        greenStatus: '100% of catch-all requests (Full Production Cutover 🎉)'
+      }
+    };
+
+    function selectMilestone(key, blue, green) {
+      document.querySelectorAll('.milestone-btn').forEach(b => {
+        b.classList.remove('active');
+        b.style.borderColor = 'var(--border-color)';
+        b.style.color = 'var(--text-main)';
+      });
+      const activeBtn = document.getElementById('btn-' + key);
+      if (activeBtn) {
+        activeBtn.classList.add('active');
+        activeBtn.style.borderColor = green >= blue ? '#10b981' : '#3b82f6';
+        activeBtn.style.color = green >= blue ? '#10b981' : '#60a5fa';
+      }
+
+      // Update split bar
+      const blueBar = document.getElementById('blueSplitBar');
+      const greenBar = document.getElementById('greenSplitBar');
+      blueBar.style.width = blue + '%';
+      blueBar.innerHTML = blue >= 15 ? blue + '% Blue' : (blue > 0 ? blue + '%' : '');
+      greenBar.style.width = green + '%';
+      greenBar.innerHTML = green >= 15 ? green + '% Green' : (green > 0 ? green + '%' : '');
+
+      document.getElementById('bluePercentText').innerText = `🟦 Stage 8 ASG Monolith: ${blue}%`;
+      document.getElementById('greenPercentText').innerText = `🟩 Stage 9 EKS Microservices: ${green}%`;
+
+      // Update badges
+      document.getElementById('blueBadge').innerText = 'Weight: ' + blue;
+      document.getElementById('greenBadge').innerText = 'Weight: ' + green;
+
+      // Update cards opacity & glow
+      const blueCard = document.getElementById('blueBranchCard');
+      const greenCard = document.getElementById('greenBranchCard');
+      const blueArrow = document.getElementById('blueArrow');
+      const greenArrow = document.getElementById('greenArrow');
+
+      blueCard.style.opacity = blue === 0 ? '0.35' : (blue / 100 * 0.65 + 0.35);
+      blueCard.style.boxShadow = blue > 0 ? '0 0 15px rgba(59, 130, 246, ' + (blue / 200) + ')' : 'none';
+      greenCard.style.opacity = green === 0 ? '0.35' : (green / 100 * 0.65 + 0.35);
+      greenCard.style.boxShadow = green > 0 ? '0 0 15px rgba(16, 185, 129, ' + (green / 200) + ')' : 'none';
+
+      blueArrow.style.opacity = blue === 0 ? '0.2' : (blue / 100);
+      greenArrow.style.opacity = green === 0 ? '0.2' : (green / 100);
+
+      // Status text
+      const info = MILESTONES[key];
+      if (info) {
+        document.getElementById('blueStatusText').innerText = info.blueStatus;
+        document.getElementById('greenStatusText').innerText = info.greenStatus;
+        document.getElementById('phaseExplanation').innerHTML = `<strong>${info.title}</strong> ${info.desc}`;
+        document.getElementById('activeWeightBadge').innerText = `Visualizer: ${blue}% Blue / ${green}% Green`;
+      }
+    }
 
     // Load initial data on startup
     document.addEventListener('DOMContentLoaded', () => {
