@@ -80,15 +80,15 @@ variable "sqs_queue_name" {
 }
 
 variable "custom_header_name" {
-  description = "Header name for CloudFront origin verification (matches Stage 8)"
+  description = "Header name for CloudFront origin verification (matches CloudFront distribution)"
   type        = string
-  default     = "X-Origin-Verify"
+  default     = "X-ShopSphere-Origin-Verify"
 }
 
 variable "custom_header_value" {
   description = "Secret header value for CloudFront origin verification"
   type        = string
-  default     = "ShopSphereEdgeSecretToken2026Verify"
+  default     = "ShopSphereEdgeSecurityToken2026!"
   sensitive   = true
 }
 
