@@ -196,6 +196,7 @@ DEPLOY_EOF
 chmod +x /opt/shopsphere/deploy.sh
 
 # Run the deployment script for initial bootstrap
+echo "latest" > /opt/shopsphere/image_tag
 /opt/shopsphere/deploy.sh
 
 # ------------------------------------------------------------------------------

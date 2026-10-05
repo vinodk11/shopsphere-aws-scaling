@@ -98,8 +98,8 @@ DECODED_USER_DATA=$(echo "${CURRENT_USER_DATA_B64}" | base64 -d)
 TAG_OVERRIDE_LINE="echo \"${IMAGE_TAG}\" > /opt/shopsphere/image_tag"
 if echo "${DECODED_USER_DATA}" | grep -q "/opt/shopsphere/image_tag"; then
     MODIFIED_USER_DATA=$(echo "${DECODED_USER_DATA}" | sed "s|echo .* > /opt/shopsphere/image_tag|${TAG_OVERRIDE_LINE}|")
-elif echo "${DECODED_USER_DATA}" | grep -q "/opt/shopsphere/deploy.sh"; then
-    MODIFIED_USER_DATA=$(echo "${DECODED_USER_DATA}" | sed "s|/opt/shopsphere/deploy.sh|${TAG_OVERRIDE_LINE}\n/opt/shopsphere/deploy.sh \"${IMAGE_TAG}\"|")
+elif echo "${DECODED_USER_DATA}" | grep -q "^/opt/shopsphere/deploy.sh"; then
+    MODIFIED_USER_DATA=$(echo "${DECODED_USER_DATA}" | sed "s|^/opt/shopsphere/deploy.sh.*$|${TAG_OVERRIDE_LINE}\n/opt/shopsphere/deploy.sh \"${IMAGE_TAG}\"|")
 else
     echo -e "${YELLOW}⚠️ Detected legacy or non-container user data. Upgrading Launch Template to Stage 8 Docker Containerization...${NC}"
     DB_HOST=$(aws rds describe-db-instances --region "${AWS_REGION}" --query "DBInstances[?contains(DBInstanceIdentifier, '${PROJECT_NAME}')].Endpoint.Address | [0]" --output text 2>/dev/null || echo "shopsphere-stage2-postgres.cy9mak0su1oj.us-east-1.rds.amazonaws.com")
@@ -126,7 +126,7 @@ else
             -e "s|\$\${|\${|g" \
             stage-8/terraform/scripts/user_data.sh.tpl)
         MODIFIED_USER_DATA=$(echo "${MODIFIED_USER_DATA}" | sed "s|IMAGE_NAME=\"shopsphere-app:8.0.0\"|IMAGE_NAME=\"shopsphere-app:${IMAGE_TAG}\"|")
-        MODIFIED_USER_DATA=$(echo "${MODIFIED_USER_DATA}" | sed "s|/opt/shopsphere/deploy.sh|${TAG_OVERRIDE_LINE}\n/opt/shopsphere/deploy.sh \"${IMAGE_TAG}\"|")
+        MODIFIED_USER_DATA=$(echo "${MODIFIED_USER_DATA}" | sed "s|^/opt/shopsphere/deploy.sh.*$|${TAG_OVERRIDE_LINE}\n/opt/shopsphere/deploy.sh \"${IMAGE_TAG}\"|")
     fi
 fi
 
