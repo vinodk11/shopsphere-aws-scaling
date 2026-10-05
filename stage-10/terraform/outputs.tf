@@ -94,15 +94,15 @@ output "order_service_sqs_role_arn" {
 
 output "sqs_queue_url" {
   description = "Existing Stage 8 SQS queue URL"
-  value       = data.aws_sqs_queue.orders[0].url
+  value       = length(data.aws_sqs_queue.orders) > 0 ? data.aws_sqs_queue.orders[0].url : ""
 }
 
 output "db_host" {
-  value = var.db_host
+  value = local.db_host
 }
 
 output "redis_host" {
-  value = var.redis_host
+  value = local.redis_host
 }
 
 output "db_name" {

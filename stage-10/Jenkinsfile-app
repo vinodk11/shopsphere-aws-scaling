@@ -12,7 +12,7 @@ pipeline {
     string(name: 'GITOPS_REPO_URL', defaultValue: 'https://github.com/vinodk11/shopsphere-aws-scaling-gitops.git', description: 'GitOps desired state repository.')
     string(name: 'GITOPS_BRANCH', defaultValue: 'main', description: 'Branch in GitOps repository to update.')
     booleanParam(name: 'RUN_DAST', defaultValue: true, description: 'Run OWASP ZAP baseline scan after rollout.')
-    string(name: 'DAST_URL', defaultValue: 'https://d33f8dq17c8295.cloudfront.net', description: 'Target URL for DAST testing.')
+    string(name: 'DAST_URL', defaultValue: 'https://d2lpsx77xpq24j.cloudfront.net', description: 'Target URL for DAST testing.')
   }
 
   environment {
@@ -239,8 +239,9 @@ with open('kustomization.yaml', 'w') as f:
       steps {
         script {
           def targetUrl = params.DAST_URL
-          if (!targetUrl || targetUrl.contains('REPLACE_WITH_STAGE9_URL')) {
-            targetUrl = 'https://d33f8dq17c8295.cloudfront.net'
+          if (!targetUrl || targetUrl.contains('REPLACE_WITH_STAGE9_URL') || targetUrl.contains('d33f8dq17c8295') || targetUrl.contains('d2kl5ria2wure0')) {
+            def discovered = sh(script: "aws cloudfront list-distributions --query \"DistributionList.Items[?contains(Comment, 'ShopSphere')].DomainName | [0]\" --output text 2>/dev/null || echo ''", returnStdout: true).trim()
+            targetUrl = (discovered && discovered != 'None' && discovered != '') ? "https://${discovered}" : 'https://d2lpsx77xpq24j.cloudfront.net'
           }
           sh """
             docker run --rm -v \$(pwd):/zap/wrk zaproxy/zap-stable:2.16.1 \\

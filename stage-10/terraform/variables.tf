@@ -72,29 +72,41 @@ variable "sqs_queue_arn" {
   default     = ""
 }
 
-variable "custom_header_name" {
-  description = "Header name for CloudFront origin verification"
+variable "sqs_queue_name" {
+  description = "Optional name of the existing SQS queue for order processing (e.g. from Stage 5)"
   type        = string
-  default     = "X-Origin-Verify"
+  default     = ""
+}
+
+variable "custom_header_name" {
+  description = "Header name for CloudFront origin verification (matches CloudFront distribution)"
+  type        = string
+  default     = "X-ShopSphere-Origin-Verify"
 }
 
 variable "custom_header_value" {
   description = "Secret header value for CloudFront origin verification"
   type        = string
-  default     = "ShopSphereEdgeSecretToken2026Verify"
+  default     = "ShopSphereEdgeSecurityToken2026!"
   sensitive   = true
 }
 
-variable "db_host" {
-  description = "Existing Stage 8 RDS endpoint used by Stage 10."
+variable "db_instance_identifier" {
+  description = "Optional Amazon RDS database instance identifier (default: shopsphere-stage2-postgres)"
   type        = string
-  default     = "shopsphere-stage8-postgres.cy9mak0su1oj.us-east-1.rds.amazonaws.com"
+  default     = ""
+}
+
+variable "db_host" {
+  description = "Existing RDS endpoint used by Stage 10."
+  type        = string
+  default     = "shopsphere-stage2-postgres.cy9mak0su1oj.us-east-1.rds.amazonaws.com"
 }
 
 variable "redis_host" {
-  description = "Existing Stage 8 ElastiCache Redis endpoint used by Stage 10."
+  description = "Existing ElastiCache Redis endpoint used by Stage 10."
   type        = string
-  default     = "shopsphere-stage8-redis.ekxmke.0001.use1.cache.amazonaws.com"
+  default     = "shopsphere-stage4-redis.ekxmke.0001.use1.cache.amazonaws.com"
 }
 
 variable "db_name" {
