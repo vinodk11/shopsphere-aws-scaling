@@ -159,6 +159,11 @@ serviceAccount:
           aws eks update-kubeconfig --region ${env.AWS_REGION} --name \$(jq -r .eks_cluster_name.value stage-10/terraform/stage10-outputs.json)
           echo '=== Argo CD Pods ==='
           kubectl get pods -n argocd -o wide
+          echo '=== Waiting for Argo CD Server ==='
+          kubectl -n argocd rollout status deployment/argocd-server --timeout=3m || true
+          echo '=== Bootstrapping Argo CD Project and Application ==='
+          kubectl apply -f stage-10/gitops/argocd/project.yaml
+          kubectl apply -f stage-10/gitops/argocd/applications/shopsphere-production.yaml
           echo '=== Argo CD Applications ==='
           kubectl get applications -n argocd || true
           echo '=== Argo CD Initial Admin Password Retrieval Command ==='
