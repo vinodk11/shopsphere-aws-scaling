@@ -255,8 +255,10 @@ with open('kustomization.yaml', 'w') as f:
             targetUrl = (discovered && discovered != 'None' && discovered != '') ? "https://${discovered}" : 'https://d35i29wgeg9egy.cloudfront.net'
           }
           sh """
-            docker run --rm -v \$(pwd):/zap/wrk zaproxy/zap-stable:2.16.1 \\
-              zap-baseline.py -t ${targetUrl} -r /zap/wrk/stage-10/security/reports/zap.html -J /zap/wrk/stage-10/security/reports/zap.json || true
+            mkdir -p stage-10/security/reports
+            chmod 777 stage-10/security/reports
+            docker run --rm -v \$(pwd)/stage-10/security/reports:/zap/wrk:rw zaproxy/zap-stable:2.16.1 \\
+              zap-baseline.py -t ${targetUrl} -r zap.html -J zap.json || true
           """
         }
       }
