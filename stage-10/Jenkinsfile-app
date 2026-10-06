@@ -127,11 +127,22 @@ pipeline {
             sh "docker build -t ${fullImage} ${item.context}"
             sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v \$(pwd):/workspace aquasec/trivy:latest image --severity HIGH,CRITICAL --format sarif --output /workspace/stage-10/security/reports/${item.repo}.sarif ${fullImage} || true"
             sh "docker push ${fullImage}"
+            sh "docker tag ${fullImage} ${env.ECR_REGISTRY}/${item.repo}:v10.0-initial && docker push ${env.ECR_REGISTRY}/${item.repo}:v10.0-initial || true"
           }
         }
       }
       post {
         always { archiveArtifacts artifacts: 'stage-10/security/reports/*', allowEmptyArchive: true }
+      }
+    }
+
+    stage('Create Runtime Secret') {
+      steps {
+        sh """
+          aws eks update-kubeconfig --region ${env.AWS_REGION} --name ${env.EKS_CLUSTER}
+          kubectl -n ${env.NAMESPACE} create namespace ${env.NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n ${env.NAMESPACE} create secret generic shopsphere-db-credentials --from-literal=DB_PASSWORD="ShopSphere2026SecurePass!" --dry-run=client -o yaml | kubectl apply -f -
+        """
       }
     }
 
