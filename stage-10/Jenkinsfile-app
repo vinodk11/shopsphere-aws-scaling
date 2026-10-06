@@ -18,7 +18,7 @@ pipeline {
   environment {
     AWS_REGION = 'us-east-1'
     AWS_DEFAULT_REGION = 'us-east-1'
-    EKS_CLUSTER = 'shopsphere-stage9-eks'
+    EKS_CLUSTER = 'shopsphere-stage10-eks'
     NAMESPACE = 'shopsphere-stage9'
     REPORT_DIR = 'stage-10/security/reports'
     FRONTEND_REPO = 'shopsphere-stage9-frontend'
