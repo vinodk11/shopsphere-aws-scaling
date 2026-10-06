@@ -132,8 +132,12 @@ resource "aws_lb_listener_rule" "product_service" {
   priority     = local.path_priority_product
 
   action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.stage9_product.arn
+    type = "forward"
+    forward {
+      target_group {
+        arn = aws_lb_target_group.stage9_product.arn
+      }
+    }
   }
 
   condition {
@@ -157,8 +161,12 @@ resource "aws_lb_listener_rule" "order_service" {
   priority     = local.path_priority_order
 
   action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.stage9_order.arn
+    type = "forward"
+    forward {
+      target_group {
+        arn = aws_lb_target_group.stage9_order.arn
+      }
+    }
   }
 
   condition {
@@ -182,8 +190,12 @@ resource "aws_lb_listener_rule" "user_service" {
   priority     = local.path_priority_user
 
   action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.stage9_user.arn
+    type = "forward"
+    forward {
+      target_group {
+        arn = aws_lb_target_group.stage9_user.arn
+      }
+    }
   }
 
   condition {
